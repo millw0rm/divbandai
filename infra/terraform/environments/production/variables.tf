@@ -200,32 +200,44 @@ variable "ingress" {
 variable "cert_manager" {
   description = "cert-manager installation and ACME prerequisite settings."
   type = object({
-    namespace                 = string
-    release_name              = string
-    chart_repository          = string
-    chart_name                = string
-    chart_version             = string
-    install_crds              = bool
-    acme_email                = string
-    acme_server               = string
-    http01_cluster_issuer     = string
-    dns01_cluster_issuer      = string
-    dns_provider_secret_name  = string
-    dns_provider_secret_key   = string
+    namespace                         = string
+    release_name                      = string
+    chart_repository                  = string
+    chart_name                        = string
+    chart_version                     = string
+    install_crds                      = bool
+    acme_email                        = string
+    acme_server                       = string
+    http01_cluster_issuer             = string
+    dns01_cluster_issuer              = string
+    dns_provider_secret_name          = string
+    dns_provider_secret_key           = string
+    delegated_dns_zones               = list(string)
+    dns01_webhook_group_name          = string
+    dns01_webhook_solver_name         = string
+    dns01_webhook_endpoint            = string
+    dns01_webhook_token_secret_name   = string
+    dns01_webhook_token_secret_key    = string
   })
   default = {
-    namespace                = "cert-manager"
-    release_name             = "cert-manager"
-    chart_repository         = "https://charts.jetstack.io"
-    chart_name               = "cert-manager"
-    chart_version            = "v1.14.5"
-    install_crds             = true
-    acme_email               = "ops@divband.ir"
-    acme_server              = "https://acme-v02.api.letsencrypt.org/directory"
-    http01_cluster_issuer    = "letsencrypt-http01-production"
-    dns01_cluster_issuer     = "letsencrypt-dns01-production"
-    dns_provider_secret_name = "divband-dns-provider"
-    dns_provider_secret_key  = "api-token"
+    namespace                        = "cert-manager"
+    release_name                     = "cert-manager"
+    chart_repository                 = "https://charts.jetstack.io"
+    chart_name                       = "cert-manager"
+    chart_version                    = "v1.14.5"
+    install_crds                     = true
+    acme_email                       = "ops@divband.ir"
+    acme_server                      = "https://acme-v02.api.letsencrypt.org/directory"
+    http01_cluster_issuer            = "letsencrypt-http01-production"
+    dns01_cluster_issuer             = "letsencrypt-dns01-production"
+    dns_provider_secret_name        = "divband-dns-provider"
+    dns_provider_secret_key         = "api-token"
+    delegated_dns_zones             = []
+    dns01_webhook_group_name        = "acme.divband.io"
+    dns01_webhook_solver_name       = "managed-dns"
+    dns01_webhook_endpoint          = "https://api.divband.ir/internal/acme-challenges"
+    dns01_webhook_token_secret_name = "divband-acme-dns01-automation"
+    dns01_webhook_token_secret_key  = "token"
   }
 }
 
@@ -264,7 +276,7 @@ variable "external_secrets" {
 variable "observability" {
   description = "Shared observability primitives required for logs, metrics, dashboards, and alerts."
   type = object({
-    namespace                 = string
+    namespace                         = string
     metrics_release_name      = string
     metrics_chart_repository  = string
     metrics_chart_name        = string

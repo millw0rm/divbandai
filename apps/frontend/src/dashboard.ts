@@ -198,6 +198,7 @@ export interface ProjectStatusSummary {
   namespaceProvisioned: boolean;
   platformSubdomainAttached: boolean;
   activeDomains: string[];
+  domains?: Array<Pick<ProjectDomain, 'id' | 'hostname' | 'status' | 'verificationStatus' | 'delegationStatus' | 'certificateStatus' | 'failureReason'>>;
   latestDeployment?: Deployment;
 }
 
@@ -1205,6 +1206,7 @@ function renderProjectOverviewPage(project?: Project, summary?: ProjectStatusSum
         <div><dt>Platform hostname</dt><dd>${escapeHtml(project.platformHostname)}</dd></div>
         <div><dt>Runner tag</dt><dd>${escapeHtml(project.runnerTag)}</dd></div>
         <div><dt>Active domains</dt><dd>${escapeHtml((summary?.activeDomains ?? project.domains.filter((domain) => domain.verified).map((domain) => domain.hostname)).join(', ') || 'None')}</dd></div>
+        <div><dt>Certificates</dt><dd>${escapeHtml((summary?.domains ?? project.domains).map((domain) => `${domain.hostname}: ${domain.certificateStatus}${domain.failureReason ? ` (${domain.failureReason})` : ''}`).join(', ') || 'None')}</dd></div>
         <div><dt>Latest deployment</dt><dd>${escapeHtml(summary?.latestDeployment?.state ?? project.deployments.at(-1)?.state ?? 'None')}</dd></div>
       </dl>
       <div class="quick-actions">

@@ -118,14 +118,30 @@ export class ManagedDnsService {
     });
   }
 
-  async createAcmeChallengeRecord(domain: ProjectDomain, value: string): Promise<void> {
+  async createAcmeChallengeRecord(domain: ProjectDomain, value: string, recordName?: string): Promise<void> {
     const zone = this.requireZone(domain);
     await zone.provider.upsertRecord(zone.id, {
-      name: `_acme-challenge.${domain.hostname}`,
+      name: this.acmeChallengeName(domain, recordName),
       type: 'TXT',
       value,
       ttlSeconds: this.defaultTtlSeconds,
     });
+  }
+
+  async deleteAcmeChallengeRecord(domain: ProjectDomain, recordName?: string): Promise<void> {
+    const zone = this.requireZone(domain);
+    await zone.provider.deleteRecord(zone.id, this.acmeChallengeName(domain, recordName), 'TXT');
+  }
+
+  private acmeChallengeName(domain: ProjectDomain, recordName?: string): string {
+    const candidate = recordName?.trim().toLowerCase();
+    if (!candidate) {
+      return `_acme-challenge.${domain.hostname}`;
+    }
+    if (candidate.startsWith('_acme-challenge.') && (candidate === `_acme-challenge.${domain.hostname}` || candidate.endsWith(`.${domain.hostname}`))) {
+      return candidate;
+    }
+    throw new Error('ACME challenge record must be an _acme-challenge name inside the delegated DNS zone.');
   }
 
   private requireZone(domain: ProjectDomain): { provider: ManagedDnsProvider; id: string } {

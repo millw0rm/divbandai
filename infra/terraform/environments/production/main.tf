@@ -279,13 +279,18 @@ resource "kubernetes_manifest" "dns01_cluster_issuer" {
         solvers = [
           {
             selector = {
-              dnsZones = [var.platform_domain]
+              dnsZones = concat([var.platform_domain], var.cert_manager.delegated_dns_zones)
             }
             dns01 = {
-              cloudflare = {
-                apiTokenSecretRef = {
-                  name = var.cert_manager.dns_provider_secret_name
-                  key  = var.cert_manager.dns_provider_secret_key
+              webhook = {
+                groupName  = var.cert_manager.dns01_webhook_group_name
+                solverName = var.cert_manager.dns01_webhook_solver_name
+                config = {
+                  endpoint = var.cert_manager.dns01_webhook_endpoint
+                  tokenSecretRef = {
+                    name = var.cert_manager.dns01_webhook_token_secret_name
+                    key  = var.cert_manager.dns01_webhook_token_secret_key
+                  }
                 }
               }
             }

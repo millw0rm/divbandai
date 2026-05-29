@@ -390,6 +390,46 @@ paths:
                 properties:
                   project:
                     $ref: '#/components/schemas/Project'
+  /internal/acme-challenges/{hostname}/present:
+    parameters:
+      - name: hostname
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Internal cert-manager DNS-01 present hook for delegated managed DNS zones
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcmeChallengeRequest'
+      responses:
+        '200':
+          description: ACME challenge TXT record created
+  /internal/acme-challenges/{hostname}/cleanup:
+    parameters:
+      - name: hostname
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Internal cert-manager DNS-01 cleanup hook for delegated managed DNS zones
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcmeChallengeCleanupRequest'
+      responses:
+        '200':
+          description: ACME challenge TXT record removed
   /projects/{projectId}:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -1690,6 +1730,22 @@ components:
         archivedAt:
           type: string
           format: date-time
+    AcmeChallengeRequest:
+      type: object
+      required: [recordName, value]
+      properties:
+        recordName:
+          type: string
+          example: _acme-challenge.example.com
+        value:
+          type: string
+    AcmeChallengeCleanupRequest:
+      type: object
+      required: [recordName]
+      properties:
+        recordName:
+          type: string
+          example: _acme-challenge.example.com
     ProjectStatusSummary:
       type: object
       properties:
@@ -1705,6 +1761,25 @@ components:
           type: array
           items:
             type: string
+        domains:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              hostname:
+                type: string
+              status:
+                $ref: '#/components/schemas/DomainStatus'
+              verificationStatus:
+                $ref: '#/components/schemas/DomainVerificationStatus'
+              delegationStatus:
+                $ref: '#/components/schemas/DomainDelegationStatus'
+              certificateStatus:
+                $ref: '#/components/schemas/CertificateState'
+              failureReason:
+                type: string
         latestDeployment:
           $ref: '#/components/schemas/Deployment'
     GitLabRepository:

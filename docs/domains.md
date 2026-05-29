@@ -99,7 +99,7 @@ supports these managed operations:
 - upsert `_divband` TXT ownership-verification records;
 - upsert application routing records for the attached hostname;
 - upsert wildcard records for delegated subdomains; and
-- upsert `_acme-challenge` TXT records for DNS-01 certificate validation.
+- upsert and delete `_acme-challenge` TXT records for DNS-01 certificate validation.
 
 Provider credentials stay in backend configuration or secret storage. The domain
 lifecycle code receives a configured adapter and only works with the neutral
@@ -232,11 +232,11 @@ Use HTTP-01 when:
 DNS-01 is required for wildcard certificates and preferred for delegated DNS. It
 is also useful when port 80 is unavailable or the route cannot be exposed before
 certificate issuance. cert-manager writes `_acme-challenge` TXT records through a
-DNS provider API. Use DNS-01 when:
+DNS provider API. For delegated managed DNS zones, Divband exposes an internal ACME automation hook that creates and cleans up `_acme-challenge` TXT records through the managed DNS provider adapter; cert-manager reaches that hook through the configured DNS-01 webhook solver. Use DNS-01 when:
 
 - Divband manages the zone or delegated sub-zone.
 - A wildcard such as `*.project2.com` is needed.
-- The DNS provider has a supported cert-manager webhook or native solver.
+- The DNS provider has a supported cert-manager webhook or native solver, or the Divband managed-DNS webhook is installed.
 
 ### Certificate policy
 

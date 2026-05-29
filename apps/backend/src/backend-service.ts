@@ -162,6 +162,10 @@ export class BackendService {
         return this.ok({ deleted });
       }
 
+      if (this.isAcmeChallengeRoute(route)) {
+        return await this.handleAcmeChallengeRoute(method, route, request);
+      }
+
       if (this.isPublishingRoute(route)) {
         const actor = this.authenticateOptional(request);
         const publishSlug = route.segments[3];
@@ -256,6 +260,7 @@ export class BackendService {
       if (route.segments[0] === 'projects' && projectId) {
         if (method === 'GET' && route.segments.length === 2) {
           const { project, membership } = this.requireProject(projectId, actor, 'project:read');
+          this.refreshProjectDomainCertificateStatuses(project);
           return this.ok({ project, membership });
         }
 
@@ -266,12 +271,22 @@ export class BackendService {
 
         if (method === 'GET' && this.matches(route, 'projects', projectId, 'status')) {
           const { project } = this.requireProject(projectId, actor, 'project:read');
+          this.refreshProjectDomainCertificateStatuses(project);
           return this.ok({
             status: project.status,
             repositoryUrl: project.repositoryUrl,
             namespaceProvisioned: project.namespaceProvisioned,
             platformSubdomainAttached: project.platformSubdomainAttached,
             activeDomains: project.domains.filter((domain) => domain.verified).map((domain) => domain.hostname),
+            domains: project.domains.map((domain) => ({
+              id: domain.id,
+              hostname: domain.hostname,
+              status: domain.status,
+              verificationStatus: domain.verificationStatus,
+              delegationStatus: domain.delegationStatus,
+              certificateStatus: domain.certificateStatus,
+              failureReason: domain.failureReason,
+            })),
             latestDeployment: project.deployments.at(-1),
           });
         }
@@ -542,6 +557,9 @@ export class BackendService {
   }
 
   private platformDomainStatus(): Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }> {
+    for (const project of this.store.projects.values()) {
+      this.refreshProjectDomainCertificateStatuses(project);
+    }
     return [...this.store.projects.values()].flatMap((project) => project.domains.map((domain) => ({ ...domain, projectId: project.id, projectSlug: project.slug, organizationId: project.organizationId })));
   }
 
@@ -678,6 +696,10 @@ export class BackendService {
   }
 
   private listProjects(actor: AuthActor): Project[] {
+    for (const project of this.store.projects.values()) {
+      this.refreshProjectDomainCertificateStatuses(project);
+    }
+
     const visibleProjectIds = new Set(
       [...this.store.projectMemberships.values()]
         .filter((membership) => membership.userId === actor.user.id)
@@ -812,6 +834,30 @@ export class BackendService {
     this.touch(project, 'domain_active');
     this.audit.record(user.id, 'project.custom_domain_verified', { hostname: domain.hostname, dnsMode: domain.dnsMode }, project.id);
     return domain;
+  }
+
+  private refreshProjectDomainCertificateStatuses(project: Project): void {
+    let changed = false;
+    for (const domain of project.domains) {
+      const nextStatus = this.certificates.getStatus(domain);
+      if (nextStatus !== domain.certificateStatus) {
+        domain.certificateStatus = nextStatus;
+        domain.updatedAt = nowIso();
+        changed = true;
+        if (nextStatus === 'issued') {
+          domain.status = 'active';
+          domain.failureReason = undefined;
+        } else if (nextStatus === 'failed') {
+          domain.status = 'failed';
+          domain.failureReason = domain.failureReason ?? `Certificate issuance failed for ${domain.hostname}.`;
+        } else if (domain.verified) {
+          domain.status = 'provisioning';
+        }
+      }
+    }
+    if (changed) {
+      project.updatedAt = nowIso();
+    }
   }
 
 
@@ -1471,6 +1517,54 @@ export class BackendService {
       { id: 'monitor_runners', component: 'runners', severity: runnerDegraded > 0 ? 'critical' : 'ok', message: `${runnerDegraded} degraded runners`, observedAt: timestamp, runbookUrl: 'docs/operations.md#runner-monitoring' },
       { id: 'monitor_storage', component: 'storage', severity: storageFailures > 0 ? 'critical' : 'ok', message: `${storageFailures} failed upload scanner sessions`, observedAt: timestamp, runbookUrl: 'docs/operations.md#storage-monitoring' },
     ];
+  }
+
+  private async handleAcmeChallengeRoute(method: string, route: RouteMatch, request: ApiRequest): Promise<ApiResponse> {
+    this.requireAcmeAutomationToken(request);
+    if (method !== 'POST' || !route.segments[2] || (route.segments[3] !== 'present' && route.segments[3] !== 'cleanup')) {
+      return this.error(404, 'not_found', 'ACME challenge endpoint not found.');
+    }
+
+    const domain = this.findDelegatedDomainForAcme(route.segments[2]);
+    const body = this.requiredObject(request.body);
+    const recordName = this.stringField(body, 'recordName', 'ACME challenge recordName is required.');
+
+    if (route.segments[3] === 'cleanup') {
+      await this.managedDns.deleteAcmeChallengeRecord(domain, recordName);
+      return this.ok({ ok: true, hostname: domain.hostname, recordName });
+    }
+
+    const value = this.stringField(body, 'value', 'ACME challenge value is required.');
+    await this.managedDns.createAcmeChallengeRecord(domain, value, recordName);
+    return this.ok({ ok: true, hostname: domain.hostname, recordName });
+  }
+
+  private requireAcmeAutomationToken(request: ApiRequest): void {
+    const configured = process.env.ACME_DNS01_AUTOMATION_TOKEN?.trim();
+    if (!configured) {
+      throw new Error('ACME DNS-01 automation is not configured.');
+    }
+    const provided = (request.headers?.authorization ?? request.headers?.Authorization ?? request.headers?.['x-divband-acme-token'])?.replace(/^Bearer\s+/i, '').trim();
+    if (provided !== configured) {
+      throw new Error('ACME DNS-01 automation token is invalid.');
+    }
+  }
+
+  private findDelegatedDomainForAcme(hostname: string): ProjectDomain {
+    const normalized = hostname.trim().toLowerCase();
+    const domain = [...this.store.projects.values()]
+      .flatMap((project) => project.domains)
+      .filter((candidate) => this.isDelegatedDnsMode(candidate.dnsMode) && candidate.providerZoneId)
+      .sort((a, b) => b.hostname.length - a.hostname.length)
+      .find((candidate) => normalized === candidate.hostname || normalized.endsWith(`.${candidate.hostname}`));
+    if (!domain) {
+      throw new Error(`No delegated managed DNS zone is available for ${normalized}.`);
+    }
+    return domain;
+  }
+
+  private isAcmeChallengeRoute(route: RouteMatch): boolean {
+    return route.segments[0] === 'internal' && route.segments[1] === 'acme-challenges';
   }
 
   private authenticateOptional(request: ApiRequest): AuthActor | undefined {

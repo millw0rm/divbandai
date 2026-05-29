@@ -16,6 +16,7 @@ Core resources:
 - `ingress.yaml` serves `REPLACE_WITH_SLUG.divband.ir` and a verified custom domain such as `project2.com`, and integrates with cert-manager through both ingress annotations and an explicit `Certificate`.
 - `httproute.yaml` is a Gateway API alternative for clusters where TLS and host attachment are managed by the shared gateway layer.
 - `certificate-issuers.yaml` provides cert-manager ACME ClusterIssuer templates for HTTP-01 and DNS-01 validation.
+- `delegated-certificate.yaml` is an optional DNS-01 `Certificate` template for delegated managed DNS zones that need both the verified hostname and wildcard SAN.
 - `kustomization.yaml` lists the default Ingress-based bundle; switch `ingress.yaml` for `httproute.yaml` when using Gateway API routing, and install `certificate-issuers.yaml` once per cluster rather than once per tenant namespace.
 
 ## Required render-time values
@@ -26,7 +27,7 @@ At minimum, provisioning must replace:
 - Quotas and limits: all `REPLACE_WITH_QUOTA_*`, `REPLACE_WITH_DEFAULT_*`, `REPLACE_WITH_MAX_*`, and `REPLACE_WITH_MIN_*` placeholders.
 - Routing and TLS: `REPLACE_WITH_INGRESS_CLASS`, `REPLACE_WITH_CLUSTER_ISSUER`, `REPLACE_WITH_PUBLIC_SERVICE_NAME`, `REPLACE_WITH_PUBLIC_SERVICE_PORT`, and `REPLACE_WITH_VERIFIED_CUSTOM_DOMAIN` after DNS ownership is verified.
 - Gateway API alternative: `REPLACE_WITH_GATEWAY_NAME` and `REPLACE_WITH_GATEWAY_NAMESPACE` when rendering `httproute.yaml`.
-- ACME issuers: `REPLACE_WITH_ACME_HTTP01_CLUSTER_ISSUER`, `REPLACE_WITH_ACME_DNS01_CLUSTER_ISSUER`, `REPLACE_WITH_ACME_ACCOUNT_EMAIL`, `REPLACE_WITH_ACME_SERVER_URL`, ACME account secret names, `REPLACE_WITH_MANAGED_DNS_ZONE`, and DNS provider token secret names when installing `certificate-issuers.yaml`.
+- ACME issuers: `REPLACE_WITH_ACME_HTTP01_CLUSTER_ISSUER`, `REPLACE_WITH_ACME_DNS01_CLUSTER_ISSUER`, `REPLACE_WITH_ACME_ACCOUNT_EMAIL`, `REPLACE_WITH_ACME_SERVER_URL`, ACME account secret names, `REPLACE_WITH_MANAGED_DNS_ZONE`, delegated DNS zones, and the ACME DNS-01 webhook endpoint/token secret when installing `certificate-issuers.yaml`.
 - Workloads: image, replica, port, health path, and resource placeholders for each enabled role.
 - Secrets: `REPLACE_WITH_CLUSTER_SECRET_STORE`; secret payloads are read from `projects/{project_id}/{environment}`.
 

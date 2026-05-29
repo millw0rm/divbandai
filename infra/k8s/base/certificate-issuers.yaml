@@ -58,10 +58,13 @@ spec:
       - selector:
           dnsZones:
             - REPLACE_WITH_MANAGED_DNS_ZONE
+            - REPLACE_WITH_DELEGATED_DNS_ZONE
         dns01:
-          # Replace this example Cloudflare solver with the DNS provider or
-          # cert-manager webhook used for divband.ir and delegated zones.
-          cloudflare:
-            apiTokenSecretRef:
-              name: REPLACE_WITH_DNS_PROVIDER_API_TOKEN_SECRET
-              key: api-token
+          webhook:
+            groupName: REPLACE_WITH_ACME_DNS01_WEBHOOK_GROUP
+            solverName: REPLACE_WITH_ACME_DNS01_WEBHOOK_SOLVER
+            config:
+              endpoint: REPLACE_WITH_DIVBAND_ACME_DNS01_ENDPOINT
+              tokenSecretRef:
+                name: REPLACE_WITH_ACME_DNS01_AUTOMATION_TOKEN_SECRET
+                key: token
