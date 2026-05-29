@@ -366,3 +366,15 @@ tr.selected td {
     max-height: none;
   }
 }
+
+.preview-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}

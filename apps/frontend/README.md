@@ -13,11 +13,11 @@ Implemented dashboard pages:
 - Domain management.
 - Environment variables.
 - Logs and build history.
-- AI assistant chat for feature requests and project changes.
+- AI assistant preview/mock chat for post-MVP feature requests and project changes.
 
 `src/dashboard.ts` includes:
 
-- `DivbandApiClient`, a backend API client for auth, projects, GitLab repository provisioning, namespace provisioning, platform subdomains, custom domains, deployments, environment variables, logs, and AI change requests.
+- `DivbandApiClient`, a backend API client for auth, projects, GitLab repository provisioning, namespace provisioning, platform subdomains, custom domains, deployments, environment variables, logs, and preview/mock AI change requests.
 - `DashboardController` and `mountDashboard`, which wire forms/buttons to the backend API, store the auth token, load page-specific project data, and re-render after actions.
 - Dashboard page metadata for routing/navigation.
 - Lifecycle state labels for Created, Repository provisioned, Namespace provisioned, Building, Deployed, Domain pending verification, Domain active, and Failed.
@@ -56,7 +56,7 @@ DIVBAND_API_BASE_URL=http://localhost:3000 npm run dev --workspace @divband/fron
 
 A compatibility `apps/frontend/.env.example` is included for hosts that load `VITE_API_BASE_URL`, but the built-in scripts use shell environment variables directly.
 
-The expected local backend URL is `http://localhost:3000` unless you run `apps/backend` on a different port. The controller expects the backend API documented in `apps/backend/openapi.yaml`, including `POST /auth/register`, `POST /auth/login`, project lifecycle routes under `/projects`, and AI change-request routes under `/projects/{projectId}/ai/change-requests`.
+The expected local backend URL is `http://localhost:3000` unless you run `apps/backend` on a different port. The controller expects the backend API documented in `apps/backend/openapi.yaml`, including `POST /auth/register`, `POST /auth/login`, project lifecycle routes under `/projects`, and preview/mock AI change-request routes under `/projects/{projectId}/ai/change-requests` that are excluded from MVP acceptance.
 
 ## Browser mounting API
 

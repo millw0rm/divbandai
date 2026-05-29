@@ -18,7 +18,7 @@ This document is the source of truth for divband product planning. Keep it curre
 
 ### Exact first usable product
 
-The first usable product is a local-demo-ready hosted project flow where a new user can sign up, create a project, provision the GitLab/Kubernetes placeholders, trigger and inspect a deployment record, attach a platform hostname, add and verify a custom domain token, and see the same flow represented in the dashboard. Agent instant hosting exists as a documented/API skeleton for anonymous static publish sessions, but the MVP should not claim production-grade static serving until object storage, edge routing, abuse controls, and API-key ownership are implemented.
+The first usable product is a local-demo-ready hosted project flow where a new user can sign up, create a project, provision the GitLab/Kubernetes placeholders, trigger and inspect a deployment record, attach a platform hostname, add and verify a custom domain token, and see the same flow represented in the dashboard. Agent instant hosting exists as a documented/API skeleton for anonymous static publish sessions, but the MVP should not claim production-grade static serving until object storage, edge routing, abuse controls, and API-key ownership are implemented. AI-assisted change requests are explicitly post-MVP: the dashboard/API may expose preview/mock controls for design validation, but real model calls, repository context retrieval, diff generation, GitLab commits, merge requests, and CI polling are not required for MVP acceptance.
 
 ### Must have
 
@@ -30,8 +30,9 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 - Platform subdomain attach flow.
 - Custom domain add/verify/certificate-status flow with clear DNS verification token expectations.
 - Environment variable management with masked return values.
-- Dashboard client pages and API methods for signup, signin, project list/create, repository status, deployment status, domains, environment variables, logs, and AI assistant.
+- Dashboard client pages and API methods for signup, signin, project list/create, repository status, deployment status, domains, environment variables, and logs.
 - Product documentation, release checklist, and backlog in this file.
+- AI assistant dashboard and API surfaces, if present, are labeled preview/mock and excluded from MVP acceptance.
 
 ### Should have
 
@@ -48,6 +49,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 - API keys for agents and CI systems.
 - Billing tiers, quotas, retention limits, usage analytics, and abuse controls.
 - Real GitLab, Kubernetes, DNS provider, certificate manager, database, object storage, and auth provider integrations.
+- Production AI-assisted change requests with real model calls, repository context retrieval, diff generation, redaction pipeline, user-confirmed GitLab commits, merge request creation, and CI status polling.
 - MCP server, installable agent skill, `/.well-known/agent.json`, and `/llms.txt` distribution surfaces.
 - Rich frontend framework UI, onboarding emails, team invites, audit-log viewer, support/admin tooling, and production SLO dashboards.
 
@@ -113,7 +115,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 | Platform subdomain attach | Backend path and dashboard client method exist. | `apps/backend/src/backend-service.ts`, `apps/frontend/src/dashboard.ts` |
 | Custom domains and certificate status | Backend domain add/verify/status behavior and dashboard domain types/methods exist; Kubernetes ingress/HTTPRoute/certificate templates are placeholders. | `apps/backend/src/backend-service.ts`, `apps/frontend/src/dashboard.ts`, `infra/k8s/base` |
 | Environment variables | Backend masked environment-variable management and dashboard methods exist. | `apps/backend/src/backend-service.ts`, `apps/frontend/src/dashboard.ts` |
-| AI-assisted change requests | Backend and dashboard types/methods cover request, context, patch, branch, MR, CI, and status flow. | `apps/backend/src/backend-service.ts`, `apps/frontend/src/dashboard.ts`, `docs/ai-workflow.md` |
+| AI-assisted change requests | Post-MVP preview/mock only; backend and dashboard types/methods cover the shape of request, context, patch, branch, MR, CI, and status flow, but the implementation must not be counted as an MVP acceptance criterion until real adapters replace synthetic behavior. | `apps/backend/src/backend-service.ts`, `apps/frontend/src/dashboard.ts`, `docs/ai-workflow.md` |
 | Agent instant hosting | Product/design milestones and publish API routes exist; production object storage/edge serving remains later work. | `docs/agent-instant-hosting.md`, `apps/backend/src/backend-service.ts` |
 | Kubernetes base templates | Placeholder manifests exist for tenant isolation, deployments, routing, certificates, secrets, RBAC, and policies. | `infra/k8s/base` |
 | Frontend dashboard UI | TypeScript controller/client definitions and page inventory exist; framework/build decision remains open. | `apps/frontend/src/dashboard.ts` |
@@ -123,7 +125,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 | Item | Area | Priority | Owner/status | Dependencies | Acceptance criteria |
 | --- | --- | --- | --- | --- | --- |
 | Local demo walkthrough | Product/devrel | P0 | Unowned / not started | Backend service, dashboard client | A contributor can follow one documented script from signup through project deploy and custom-domain verification locally. |
-| API reference for current backend routes | API/docs | P0 | Unowned / not started | Stable route list in backend | Docs include request/response examples for auth, projects, provisioning, domains, deployments, env vars, and publish routes. |
+| API reference for current backend routes | API/docs | P0 | Unowned / not started | Stable route list in backend | Docs include request/response examples for auth, projects, provisioning, domains, deployments, env vars, and publish routes; AI change-request routes are marked preview/mock and excluded from MVP acceptance. |
 | Persist backend state in a database | Platform | P0 | Open decision | Database selection, migrations | Data survives process restart; tests cover user, project, domain, deployment, publish, and audit records. |
 | Real auth provider/session hardening | Auth/security | P0 | Open decision | Auth provider, password/session policy | Signup/login use production-grade credential handling, expiration, revocation, and OAuth/OIDC configuration. |
 | GitLab provisioning integration | Integrations | P0 | Skeleton exists | GitLab instance/token, runner model | Creating a project creates a private GitLab project, configures runner tags, and stores repository URL. |
@@ -137,6 +139,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 | Abuse controls and quotas | Security/platform | P1 | Not started | Storage/edge/provider metrics | Publish and deployment flows enforce size, rate, retention, phishing/malware, and bandwidth controls. |
 | Product analytics and audit viewer | Operations | P2 | Audit service skeleton | Database, frontend UI | Operators and project owners can inspect relevant usage and audit events safely. |
 | Billing/tier enforcement | Business | P2 | Not started | Quotas, payment provider, plans | Free/paid limits are enforced before costly operations and explained in product UI/API errors. |
+| Production AI assistant | AI/workflow | P2 | Preview/mock only | Model provider, GitLab adapter, repository context indexer, redaction service, audit/event store | Natural-language change requests use real adapters for model calls, context retrieval, diff generation, redaction, confirmation, branch commits, merge requests, and CI polling with documented failure handling. |
 
 ## 6. Open decisions
 
@@ -148,6 +151,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 | Frontend framework/build | Current TypeScript-only controller, Vite + React, SvelteKit, Next.js, Astro | Local demo / private alpha | MVP needs a buildable dashboard; static UI is acceptable if journeys are complete. |
 | Hosting domain | `divband.ir`, `divband.io`, separate static-hosting domain, local wildcard domain | Public MVP | Consider cookie isolation, phishing risk, custom-domain routing, TLS automation, and brand/domain availability. |
 | Deployment target | Local kind/k3d, managed Kubernetes, single VPS/k3s, hybrid static edge + Kubernetes apps | Private alpha | Must match the MVP promise: isolated project namespaces for app deploys and a separate static-serving path for agent instant publish. |
+| AI assistant scope | Defer to post-MVP unless promoted with real adapters and security review | Post-MVP | Current decision: preview/mock only for MVP; do not include in MVP acceptance criteria. |
 
 ## 7. Release checklist
 
@@ -155,7 +159,7 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 
 - [ ] Repository installs dependencies and typechecks on a clean machine.
 - [ ] Backend service can be exercised with local requests for signup, login, project creation, provisioning placeholders, deployment reporting, and domain verification.
-- [ ] Dashboard can call local backend methods or a mocked fetch implementation for the core journeys.
+- [ ] Dashboard can call local backend methods or a mocked fetch implementation for the core journeys, excluding the preview/mock AI assistant.
 - [ ] Kubernetes base manifests render with demo placeholder replacements or have documented manual substitutions.
 - [ ] Demo documentation includes exact commands, sample payloads, expected responses, and reset steps.
 - [ ] Known limitations are explicit: no production database, provider integrations, real DNS/TLS, object storage, or edge serving unless implemented.
@@ -173,11 +177,11 @@ The first usable product is a local-demo-ready hosted project flow where a new u
 ### Public MVP
 
 - [ ] Public onboarding, docs, API reference, and product positioning are complete.
-- [ ] Core dashboard journeys are usable without manual API calls.
+- [ ] Core dashboard journeys are usable without manual API calls, excluding the preview/mock AI assistant.
 - [ ] Agent instant hosting either works end to end with static serving or is clearly excluded from public claims.
 - [ ] Quotas, rate limits, retention, and abuse scanning protect anonymous and authenticated surfaces.
 - [ ] Custom-domain ownership checks and TLS lifecycle are automated and tested.
-- [ ] Security review covers auth, project isolation, domain takeover, secret redaction, API tokens, and CI/deployment report authentication.
+- [ ] Security review covers auth, project isolation, domain takeover, API tokens, and CI/deployment report authentication; AI secret redaction and workflow safety are reviewed before the post-MVP AI assistant becomes production.
 - [ ] Operational dashboards track availability, deployment success rate, certificate health, DNS failures, publish abuse, and storage/bandwidth usage.
 
 ### Production

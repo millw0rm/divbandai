@@ -1,5 +1,7 @@
 # AI-assisted project workflow
 
+> **Post-MVP preview/mock:** AI-assisted change requests are deferred from the MVP. The current dashboard and API surface may be used to validate workflow shape, but production launch requires real model, repository, GitLab, redaction, audit, rollback, and CI polling adapters before the feature can be treated as a supported product capability.
+
 The AI assistant helps a project member request feature work, review an AI-generated patch, and move the change through GitLab review and CI without giving the model direct production access.
 
 ## Goals
@@ -44,28 +46,46 @@ The dashboard AI assistant page should present two layers:
 
 The confirmation control must be distinct from the initial prompt submission. Users need to see that generated changes are not applied until they click a confirmation action.
 
-## Safety controls
+## Safety requirements
+
+These requirements are mandatory before the AI assistant can move from post-MVP preview/mock to a supported production feature.
 
 ### User confirmation before applying generated changes
 
-Patch generation only produces an `AiPatchProposal`. Branch creation fails unless the request body includes `confirmApply: true`, and the backend stamps `confirmedAt` and `confirmedBy` on the patch.
+Patch generation only produces an `AiPatchProposal`. Branch creation fails unless the request body includes `confirmApply: true`, and the backend stamps `confirmedAt` and `confirmedBy` on the patch. The UI must show the patch summary, affected files, branch name, target branch, and GitLab commit action before enabling confirmation.
+
+### Secret redaction
+
+The backend redacts token-, secret-, password-, API-key-, and GitLab PAT-looking values in prompts, context summaries, model inputs, model outputs, diffs, logs, and audit metadata. Protected environment variable names are surfaced as redacted context metadata; values are not exposed. Redaction failures must fail closed: no model call, branch creation, or merge request creation should proceed with unredacted context.
+
+### Allowed file paths
+
+All file paths attached as context or patch files are normalized under the project slug. Empty paths, absolute paths, parent-directory traversal, symlink escapes, generated dependency directories, build artifacts, and `.git` paths are rejected to prevent cross-project access. A production implementation must maintain an allowlist of writable project paths and a denylist for secrets, lockfiles unless explicitly confirmed, CI credentials, deployment keys, and platform-owned manifests.
+
+### Branch naming and target branches
+
+The backend creates AI branches with the deterministic prefix `ai/{changeRequestId}` or an equivalent collision-resistant prefix owned by divband. Branch names must be normalized, unique per project, and never user-controlled beyond the target branch selection. Target branches must resolve to allowed repository branches, and the assistant must never push directly to the default branch or production release branches.
 
 ### Merge request review instead of direct production push
 
-The backend creates an `ai/{changeRequestId}` branch and opens a GitLab merge request. The assistant never pushes to the default branch or marks production deploy-ready without the CI gate.
+The backend creates the AI branch and opens a GitLab merge request. The assistant never pushes to the default branch or marks production deploy-ready without the CI gate. Merge request descriptions must identify the AI workflow, list generated files, link to the audit trail, and include rollback notes.
 
 ### CI required before deployment
 
-The workflow requires a merge request before CI can be triggered. Deployment readiness is only reported through the status endpoint after CI succeeds and the deploy gate sets `deploymentReady: true`.
+The workflow requires a merge request before CI can be triggered. Deployment readiness is only reported through the status endpoint after CI succeeds and the deploy gate sets `deploymentReady: true`. CI status polling must read GitLab pipeline/job state from the configured adapter rather than trusting client-submitted status for production readiness.
 
-### Secrets redaction
+### Rollback
 
-The backend redacts token-, secret-, password-, API-key-, and GitLab PAT-looking values in prompts, context summaries, and diffs. Protected environment variable names are surfaced as redacted context metadata; values are not exposed.
+Every AI-generated commit must be traceable to a prior branch SHA and merge request. If branch creation, commit creation, merge request creation, CI, or deployment readiness fails, the workflow must preserve enough metadata to close the merge request, delete or supersede the AI branch, or revert the merge through the normal GitLab rollback path. Rollback actions must be explicit, audited, and visible to the project owner.
 
-### Project-scoped file access
+### Audit events
 
-All file paths attached as context or patch files are normalized under the project slug. Empty paths, parent-directory traversal, and `.git` paths are rejected to prevent cross-project access.
+Each AI transition records an audit action including the project ID, requester ID, change request ID, previous and next status, redaction result, file count, branch name, commit SHA, merge request IID, pipeline ID, and failure reason when present. Operators can trace request creation, context attachment, patch generation, user confirmation, branch creation, merge request opening, CI triggering, status polling, rollback, and cancellation.
+
+### Failure handling
+
+AI workflow failures must be recoverable and safe by default. Model timeouts, redaction uncertainty, context retrieval misses, invalid diffs, path violations, GitLab adapter errors, merge conflicts, CI failures, and polling timeouts should move the request to a failed or needs-attention state with a user-readable reason. The backend should avoid partial duplicate side effects by using idempotency keys for branch, commit, merge request, and CI operations.
 
 ## Audit and observability
 
-Each AI transition records an audit action including the change request ID and relevant metadata. Operators can trace request creation, context attachment, patch generation, branch creation, merge request opening, CI triggering, and status updates.
+The audit log, metrics, and traces should make it clear whether an AI change request is preview/mock or backed by production adapters. Production metrics should include model-call latency/error rate, redaction blocks, path-policy blocks, patch validation failures, GitLab adapter failures, CI polling age, confirmation-to-commit latency, and rollback frequency.

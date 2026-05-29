@@ -214,8 +214,8 @@ export const dashboardSections: DashboardSection[] = [
   },
   {
     id: 'assistant',
-    title: 'AI assistant',
-    description: 'Draft feature changes through reviewed GitLab merge requests.',
+    title: 'AI assistant preview',
+    description: 'Preview/mock post-MVP workflow for reviewed AI change requests.',
   },
 ];
 
@@ -282,8 +282,8 @@ export const dashboardPages: DashboardPage[] = [
   },
   {
     id: 'ai-assistant',
-    title: 'AI assistant',
-    description: 'Request feature work and project changes through chat.',
+    title: 'AI assistant preview',
+    description: 'Preview/mock post-MVP workflow for project change requests.',
     requiresProject: true,
   },
 ];
@@ -1076,21 +1076,22 @@ function renderAssistantPage(project: Project | undefined, messages: AssistantMe
 
   return `
     <article class="card assistant-card">
-      <h2>AI assistant</h2>
-      <p>Creates reviewed change requests for <strong>${escapeHtml(project.name)}</strong>. Generated work stays project-scoped and must be confirmed before branch creation.</p>
+      <h2>AI assistant <span class="preview-badge">Preview/mock · post-MVP</span></h2>
+      <p>This assistant is a post-MVP preview for <strong>${escapeHtml(project.name)}</strong>. Current controls validate the reviewed-change workflow shape; production use requires real model, repository, GitLab, redaction, audit, rollback, and CI polling adapters.</p>
       <ul class="assistant-transcript">${transcript}</ul>
       <form data-action="assistant-request" data-project-id="${escapeHtml(project.id)}">
         <label>Request <textarea name="prompt" placeholder="Add pricing cards to the landing page" required></textarea></label>
         <label>Target branch <input name="targetBranch" value="main"></label>
-        <button type="submit">Create AI change request</button>
+        <button type="submit">Create preview AI change request</button>
       </form>
       <section class="assistant-safety">
-        <h3>Safety controls</h3>
+        <h3>Preview safety controls required before production</h3>
         <ul>
           <li>User confirmation is required before applying generated changes.</li>
           <li>Changes open a GitLab merge request instead of pushing to production.</li>
           <li>CI must succeed before deployment can be marked ready.</li>
           <li>Secrets are redacted and file paths are constrained to this project.</li>
+          <li>Rollback, branch naming, audit events, and adapter failure handling must be completed before this becomes an MVP feature.</li>
         </ul>
       </section>
       <section>

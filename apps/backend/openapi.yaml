@@ -766,14 +766,15 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/EnvironmentVariable'
+  # Preview/mock, post-MVP: AI change-request routes are excluded from MVP acceptance until backed by real model, repository, GitLab, redaction, audit, rollback, and CI polling adapters.
   /projects/{projectId}/ai/change-requests:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
     get:
-      summary: List AI change requests for a project
+      summary: List AI change requests for a project (preview/mock, post-MVP)
       responses:
         '200':
-          description: AI change requests
+          description: Preview/mock AI change requests; excluded from MVP acceptance until real adapters replace synthetic model, repository, GitLab, and CI behavior.
           content:
             application/json:
               schema:
@@ -784,7 +785,7 @@ paths:
                     items:
                       $ref: '#/components/schemas/AiChangeRequest'
     post:
-      summary: Create an AI change request
+      summary: Create an AI change request (preview/mock, post-MVP)
       requestBody:
         required: true
         content:
@@ -793,7 +794,7 @@ paths:
               $ref: '#/components/schemas/CreateAiChangeRequest'
       responses:
         '202':
-          description: AI change request accepted
+          description: Preview/mock AI change request accepted; excluded from MVP acceptance until real adapters replace synthetic behavior.
           content:
             application/json:
               schema:
@@ -806,10 +807,10 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     get:
-      summary: Get an AI change request
+      summary: Get an AI change request (preview/mock, post-MVP)
       responses:
         '200':
-          description: AI change request detail
+          description: Preview/mock AI change request detail; excluded from MVP acceptance until real adapters replace synthetic behavior.
           content:
             application/json:
               schema:
@@ -822,7 +823,7 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     post:
-      summary: Attach redacted project context to an AI change request
+      summary: Attach redacted project context to an AI change request (preview/mock, post-MVP)
       requestBody:
         required: true
         content:
@@ -831,7 +832,7 @@ paths:
               $ref: '#/components/schemas/AttachAiContextRequest'
       responses:
         '200':
-          description: Context attached
+          description: Preview/mock context attached; production use requires real repository context retrieval and fail-closed redaction.
           content:
             application/json:
               schema:
@@ -844,7 +845,7 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     post:
-      summary: Generate a patch proposal for a confirmed project context
+      summary: Generate a patch proposal for a confirmed project context (preview/mock, post-MVP)
       requestBody:
         required: false
         content:
@@ -853,7 +854,7 @@ paths:
               $ref: '#/components/schemas/GenerateAiPatchRequest'
       responses:
         '200':
-          description: Patch generated and waiting for user confirmation
+          description: Preview/mock patch generated and waiting for user confirmation; production use requires real model calls and diff validation.
           content:
             application/json:
               schema:
@@ -866,7 +867,7 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     post:
-      summary: Create a GitLab branch after user confirmation
+      summary: Create a GitLab branch after user confirmation (preview/mock, post-MVP)
       requestBody:
         required: true
         content:
@@ -875,7 +876,7 @@ paths:
               $ref: '#/components/schemas/CreateAiBranchRequest'
       responses:
         '202':
-          description: Branch and commit created
+          description: Preview/mock branch and commit created; production use requires real GitLab commit creation with rollback metadata.
           content:
             application/json:
               schema:
@@ -888,10 +889,10 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     post:
-      summary: Open a GitLab merge request for AI-generated changes
+      summary: Open a GitLab merge request for AI-generated changes (preview/mock, post-MVP)
       responses:
         '202':
-          description: Merge request opened
+          description: Preview/mock merge request opened; production use requires real GitLab merge request creation.
           content:
             application/json:
               schema:
@@ -904,10 +905,10 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     post:
-      summary: Trigger CI for the AI merge request branch
+      summary: Trigger CI for the AI merge request branch (preview/mock, post-MVP)
       responses:
         '202':
-          description: CI pipeline triggered
+          description: Preview/mock CI pipeline triggered; production use requires real GitLab CI triggering and polling.
           content:
             application/json:
               schema:
@@ -920,7 +921,7 @@ paths:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/ChangeRequestId'
     put:
-      summary: Report AI build and deployment readiness status
+      summary: Report AI build and deployment readiness status (preview/mock, post-MVP)
       requestBody:
         required: true
         content:
@@ -929,7 +930,7 @@ paths:
               $ref: '#/components/schemas/ReportAiStatusRequest'
       responses:
         '200':
-          description: Build/deploy status recorded
+          description: Preview/mock build/deploy status recorded; production readiness must come from trusted CI polling.
           content:
             application/json:
               schema:
@@ -1159,7 +1160,7 @@ components:
           type: string
         files:
           type: array
-          description: Project-scoped paths; parent traversal and .git paths are rejected.
+          description: Project-scoped paths for the preview/mock AI API; production AI must enforce allowed writable paths plus traversal, symlink, generated-artifact, secret, and .git denylists.
           items:
             type: string
     GenerateAiPatchRequest:
@@ -1177,7 +1178,7 @@ components:
       properties:
         confirmApply:
           type: boolean
-          description: Must be true to acknowledge the generated patch before branch creation.
+          description: Must be true to acknowledge the generated patch before branch creation; preview/mock only until real GitLab commit creation and rollback handling are implemented.
     ReportAiStatusRequest:
       type: object
       required: [status]
@@ -1190,7 +1191,7 @@ components:
           type: string
         deploymentReady:
           type: boolean
-          description: True only after CI has succeeded and deployment gates pass.
+          description: True only after CI has succeeded and deployment gates pass; production AI must derive this from trusted GitLab CI polling, not client-submitted status.
     AiChangeStatus:
       type: string
       enum: [requested, context_attached, patch_generated, awaiting_confirmation, branch_created, merge_request_opened, ci_running, ci_succeeded, ci_failed, deploy_ready]
@@ -1208,7 +1209,7 @@ components:
           type: string
         prompt:
           type: string
-          description: Stored with secret-looking values redacted.
+          description: Preview/mock field stored with secret-looking values redacted; production AI requires fail-closed redaction before model, diff, GitLab, or CI adapter calls.
         status:
           $ref: '#/components/schemas/AiChangeStatus'
         targetBranch:
