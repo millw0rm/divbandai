@@ -5,29 +5,47 @@ locals {
     "divband.io/managed-by"     = "terraform"
   }
 
-  platform_wildcard_hostname = "*.${var.platform_domain}"
-  required_dns_records = concat(
-    [
-      {
-        name    = var.platform_domain
-        type    = "A/AAAA-or-ALIAS"
-        value   = var.public_ingress_target
-        purpose = "Apex platform landing page and HTTP-01 reachability when supported by the DNS provider."
-      },
-      {
-        name    = local.platform_wildcard_hostname
-        type    = "CNAME-or-wildcard-A/AAAA"
-        value   = var.public_ingress_target
-        purpose = "Default per-project platform hostnames such as project-slug.${var.platform_domain}."
+  platform_domain              = trimsuffix(var.platform_domain, ".")
+  platform_wildcard_hostname   = "*.${local.platform_domain}"
+  platform_service_hostnames   = distinct(compact(concat([var.dashboard_hostname, var.api_hostname, var.gitlab_hostname], var.observability_hostnames, var.platform_hostnames)))
+  cloudflare_platform_zone_id  = var.cloudflare_zone_id != "" ? var.cloudflare_zone_id : var.dns_zone_id
+
+  managed_platform_dns_records = merge(
+    {
+      (local.platform_domain) = {
+        record_name = "@"
+        type        = var.platform_dns_record_type
+        value       = var.public_ingress_target
+        purpose     = "Apex platform landing page and HTTP-01 reachability when supported by the DNS provider."
       }
-    ],
-    [for hostname in var.platform_hostnames : {
-      name    = hostname
-      type    = "CNAME-or-A/AAAA"
-      value   = var.public_ingress_target
-      purpose = "Shared platform service hostname."
-    }]
+      (local.platform_wildcard_hostname) = {
+        record_name = "*"
+        type        = var.platform_dns_record_type
+        value       = var.public_ingress_target
+        purpose     = "Default per-project platform hostnames such as project-slug.${local.platform_domain}."
+      }
+    },
+    {
+      for hostname in local.platform_service_hostnames : trimsuffix(hostname, ".") => {
+        record_name = trimsuffix(trimsuffix(hostname, "."), ".${local.platform_domain}")
+        type        = var.platform_dns_record_type
+        value       = var.public_ingress_target
+        purpose     = "Shared platform service hostname."
+      }
+      if trimsuffix(hostname, ".") != local.platform_domain && trimsuffix(hostname, ".") != local.platform_wildcard_hostname
+    }
   )
+
+  required_dns_records = [
+    for hostname, record in local.managed_platform_dns_records : {
+      name         = hostname
+      provider_ref = record.record_name
+      type         = record.type
+      value        = record.value
+      purpose      = record.purpose
+      managed      = var.manage_platform_dns_records
+    }
+  ]
 
   worker_inventory = {
     for name, pool in var.worker_node_pools : name => {
@@ -84,6 +102,25 @@ locals {
           }
         }
       }
+    }
+  }
+}
+
+resource "cloudflare_record" "platform" {
+  for_each = var.manage_platform_dns_records ? local.managed_platform_dns_records : {}
+
+  zone_id         = local.cloudflare_platform_zone_id
+  name            = each.value.record_name
+  type            = each.value.type
+  value           = each.value.value
+  ttl             = var.cloudflare_dns_ttl
+  proxied         = var.cloudflare_dns_proxied
+  allow_overwrite = true
+
+  lifecycle {
+    precondition {
+      condition     = local.cloudflare_platform_zone_id != ""
+      error_message = "cloudflare_zone_id (or dns_zone_id) is required when manage_platform_dns_records is true."
     }
   }
 }

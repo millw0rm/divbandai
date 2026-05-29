@@ -73,11 +73,15 @@ output "secret_backend_configuration" {
 }
 
 output "dns_zone_and_records" {
-  description = "DNS zone inventory and records required for *.divband.ir or the configured platform_domain. Bind these outputs to a provider-specific DNS stack when credentials are available."
+  description = "DNS zone inventory and managed Cloudflare records required for *.divband.ir or the configured platform_domain. Customer-owned custom domains remain documented in modules/dns-domain."
   value = {
-    zone_name        = var.platform_domain
-    zone_id          = var.dns_zone_id
-    required_records = local.required_dns_records
+    zone_name            = local.platform_domain
+    zone_id              = local.cloudflare_platform_zone_id
+    provider             = "cloudflare"
+    managed_records      = var.manage_platform_dns_records
+    dns_record_type      = var.platform_dns_record_type
+    public_ingress_target = var.public_ingress_target
+    required_records     = local.required_dns_records
   }
 }
 

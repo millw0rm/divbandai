@@ -10,10 +10,34 @@ variable "platform_domain" {
   default     = "divband.ir"
 }
 
-variable "platform_hostnames" {
-  description = "Additional shared platform hostnames that should resolve to the public ingress endpoint."
+variable "dashboard_hostname" {
+  description = "Dashboard/application hostname managed in the platform-owned DNS zone. Set to an empty string to skip."
+  type        = string
+  default     = "app.divband.ir"
+}
+
+variable "api_hostname" {
+  description = "API hostname managed in the platform-owned DNS zone when the API is separate from the dashboard/app hostname. Set to an empty string to skip."
+  type        = string
+  default     = "api.divband.ir"
+}
+
+variable "gitlab_hostname" {
+  description = "Self-hosted GitLab hostname managed in the platform-owned DNS zone. Set to an empty string when GitLab is not self-hosted."
+  type        = string
+  default     = "gitlab.divband.ir"
+}
+
+variable "observability_hostnames" {
+  description = "Optional observability hostnames, such as Grafana, managed in the platform-owned DNS zone."
   type        = list(string)
-  default     = ["api.divband.ir", "app.divband.ir", "gitlab.divband.ir", "grafana.divband.ir"]
+  default     = ["grafana.divband.ir"]
+}
+
+variable "platform_hostnames" {
+  description = "Additional shared platform hostnames that should resolve to the public ingress endpoint. Prefer dashboard_hostname, api_hostname, gitlab_hostname, and observability_hostnames for first-class platform services."
+  type        = list(string)
+  default     = []
 }
 
 variable "public_ingress_target" {
@@ -22,8 +46,50 @@ variable "public_ingress_target" {
   default     = "REPLACE_WITH_INGRESS_LOAD_BALANCER"
 }
 
+variable "manage_platform_dns_records" {
+  description = "When true, create platform-owned DNS records in the configured Cloudflare zone. Customer-owned custom domains remain in modules/dns-domain."
+  type        = bool
+  default     = false
+}
+
+variable "platform_dns_record_type" {
+  description = "Cloudflare DNS record type used for apex, wildcard, and service hostnames. Use CNAME for load balancer hostnames, A for IPv4 targets, or AAAA for IPv6 targets. Cloudflare flattens apex CNAME records."
+  type        = string
+  default     = "CNAME"
+
+  validation {
+    condition     = contains(["A", "AAAA", "CNAME"], var.platform_dns_record_type)
+    error_message = "platform_dns_record_type must be one of A, AAAA, or CNAME."
+  }
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token with Zone:DNS:Edit permissions for the platform_domain zone. May be omitted when CLOUDFLARE_API_TOKEN is set or manage_platform_dns_records is false."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID for platform_domain. Required when manage_platform_dns_records is true unless dns_zone_id is used as a compatibility alias."
+  type        = string
+  default     = ""
+}
+
+variable "cloudflare_dns_ttl" {
+  description = "TTL in seconds for managed Cloudflare platform DNS records. Use 1 for Cloudflare automatic TTL."
+  type        = number
+  default     = 1
+}
+
+variable "cloudflare_dns_proxied" {
+  description = "Whether Cloudflare should proxy managed platform DNS records. Keep false for plain DNS or when wildcard proxying is unavailable for the zone."
+  type        = bool
+  default     = false
+}
+
 variable "dns_zone_id" {
-  description = "Optional provider-specific DNS zone identifier for the configured platform_domain. This stack documents required records but does not bind to a DNS provider."
+  description = "Compatibility alias for the Cloudflare platform_domain zone ID. Prefer cloudflare_zone_id for new configurations."
   type        = string
   default     = ""
 }

@@ -14,7 +14,7 @@ The production root stack wires the cluster-level platform layer that every tena
 - cert-manager namespace, Helm release, CRD installation, HTTP-01 and DNS-01 ClusterIssuer prerequisites, and DNS provider secret wiring.
 - External Secrets Operator namespace, Helm release, and ClusterSecretStore prerequisites.
 - Secret backend configuration, currently modeled for Vault and exposed as outputs for other backends.
-- DNS zone and required platform records for `*.divband.ir` or the configured `platform_domain`.
+- Cloudflare-managed platform DNS records for `platform_domain`, `*.platform_domain`, dashboard, API, self-hosted GitLab, and observability hostnames, while customer custom domains stay out of the platform zone stack.
 - Observability namespaces, metrics/log collection Helm releases, identity-label contracts, alert severities, runbook URLs, and dashboard URLs required by `docs/operations.md`.
 
 Typical production workflow:
@@ -28,6 +28,22 @@ terraform apply
 ```
 
 Set `apply_kubernetes_resources = false` when a managed cluster, Ansible, or GitOps system installs cluster add-ons. In that mode, `terraform output` is still the shared platform contract that documents the kubeconfig, worker inventory, DNS records, cert-manager, External Secrets, secret backend, and observability prerequisites.
+
+### Platform-owned DNS
+
+The production root stack now includes a provider-specific managed-zone path for platform-owned records through the Cloudflare provider. Enable it with `manage_platform_dns_records = true`, set `cloudflare_zone_id`, and provide `cloudflare_api_token` through `TF_VAR_cloudflare_api_token`, `CLOUDFLARE_API_TOKEN`, Terraform Cloud, or a local `terraform.tfvars` file.
+
+Managed platform records are built from:
+
+- The apex `platform_domain` landing record.
+- The wildcard `*.platform_domain` record used by default per-project hostnames.
+- `dashboard_hostname`, for example `app.divband.ir`.
+- `api_hostname` when the API is served from a separate hostname.
+- `gitlab_hostname` when GitLab is self-hosted.
+- `observability_hostnames`, such as `grafana.divband.ir`.
+- Any extra names in `platform_hostnames`.
+
+Set optional hostname variables to an empty string, or set `observability_hostnames = []`, to skip records that do not apply to an environment. The record type defaults to `CNAME`; use `A` or `AAAA` when `public_ingress_target` is an IP address. Cloudflare flattens apex CNAME records.
 
 ## Per-tenant/project provisioning contracts
 

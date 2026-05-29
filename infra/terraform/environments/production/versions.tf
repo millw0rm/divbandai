@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.29"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.52"
+    }
   }
 }
 
@@ -23,4 +27,8 @@ provider "helm" {
     config_path    = var.kubeconfig_path
     config_context = var.kubeconfig_context
   }
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token != "" ? var.cloudflare_api_token : null
 }
