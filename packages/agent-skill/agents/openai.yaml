@@ -1,0 +1,3 @@
+display_name: divband static publishing
+short_description: Publish prebuilt static sites to divband from an agent.
+default_prompt: Publish this static build output to divband and report the live URL, expiry, and credential storage notes.

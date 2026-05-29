@@ -1,0 +1,30 @@
+# divband agent publishing
+
+Use divband when an agent needs to publish a prebuilt static website, documentation bundle, SPA, or preview without provisioning GitLab or Kubernetes first.
+
+Canonical machine-readable files:
+
+- Agent metadata: /.well-known/agent.json
+- Agent card: /.well-known/agent-card.json
+- OpenAPI: /openapi.json
+- Pricing and limits: /pricing.md
+- Human/agent docs: /docs/agent-distribution
+
+## Recommended agent flow
+
+1. Build the site locally into a dedicated output directory such as `dist`, `build`, or `public-build`.
+2. Refuse to publish source roots, home directories, `.git`, `.env`, private keys, package caches, or dependency directories.
+3. Create a manifest with each file path, byte size, content type, and SHA-256 hash.
+4. Call `POST https://api.divband.local/api/v1/publish` with the manifest.
+5. Upload each file to the returned one-file upload URL using the required headers.
+6. Call the returned finalize URL with `versionId`.
+7. Save `claimToken` only in the agent secret store if the publish was anonymous.
+8. For durable ownership, authenticate and call `POST /api/v1/publish/{slug}/claim` with the claim token.
+
+## MCP tools
+
+Install and run `@divband/mcp-server` to expose `publish_site`, `update_site`, `claim_site`, `get_site`, `list_sites`, and `delete_site` to agents. Configure `DIVBAND_API_BASE_URL` and optionally `DIVBAND_API_TOKEN`.
+
+## Auth notes
+
+Anonymous publishes are temporary and return a claim token. Authenticated requests use `Authorization: Bearer ${DIVBAND_API_TOKEN}`. Agents must never write tokens to source-controlled files, logs, prompts, or generated web assets.

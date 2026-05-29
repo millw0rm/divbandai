@@ -1,0 +1,16 @@
+{
+  "name": "@divband/agent-skill",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Installable Codex-style skill for publishing static sites to divband.",
+  "type": "module",
+  "bin": {
+    "divband-publish-static": "scripts/publish-static-site.mjs",
+    "divband-install-skill": "scripts/install-skill.mjs"
+  },
+  "files": [
+    "SKILL.md",
+    "agents/openai.yaml",
+    "scripts/*.mjs"
+  ]
+}
