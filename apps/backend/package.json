@@ -14,7 +14,8 @@
     "build": "tsc --noEmit --project ../../tsconfig.json",
     "start": "node --experimental-transform-types src/server.ts",
     "smoke:controls": "node --experimental-transform-types scripts/production-controls-smoke.mjs",
-    "smoke:restore": "node --experimental-transform-types scripts/restore-smoke.mjs"
+    "smoke:restore": "node --experimental-transform-types scripts/restore-smoke.mjs",
+    "smoke:publish": "node --experimental-transform-types scripts/publish-smoke.mjs"
   },
   "dependencies": {
     "pg": "^8.13.1"

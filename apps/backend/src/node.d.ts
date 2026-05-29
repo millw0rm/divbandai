@@ -29,7 +29,7 @@ declare module 'node:http' {
   export interface ServerResponse {
     statusCode: number;
     setHeader(name: string, value: string | number): void;
-    end(body?: string): void;
+    end(body?: string | Uint8Array): void;
   }
 
   export interface Server {
@@ -122,8 +122,8 @@ declare module 'node:crypto' {
   export function scryptSync(password: string, salt: string, keylen: number, options?: { N?: number; r?: number; p?: number; maxmem?: number }): Uint8Array;
   export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
   export function createHash(algorithm: 'sha256'): {
-    update(data: string): { digest(encoding: 'hex'): string };
-    digest(encoding: 'hex'): string;
+    update(data: string | Uint8Array): { digest(encoding: 'hex' | 'base64url'): string };
+    digest(encoding: 'hex' | 'base64url'): string;
   };
   export function createHmac(algorithm: 'sha256', key: string | Uint8Array): {
     update(data: string): { digest(): Uint8Array; digest(encoding: 'hex'): string };

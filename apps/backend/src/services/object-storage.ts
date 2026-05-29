@@ -22,12 +22,24 @@ export interface StoredObjectMetadata {
   checksumSha256: string;
 }
 
+export interface StoredObjectContent extends StoredObjectMetadata {
+  body: Uint8Array;
+}
+
+export interface PutObjectInput {
+  key: string;
+  body: Uint8Array;
+  checksumSha256?: string;
+}
+
 export interface ObjectStorage {
   bucket: string;
   stagingPrefix: string;
   livePrefix: string;
   presignPut(input: PresignPutInput): PresignedPutObject;
   headObject(key: string): Promise<StoredObjectMetadata | undefined>;
+  putObject(input: PutObjectInput): Promise<StoredObjectMetadata>;
+  getObject(key: string): Promise<StoredObjectContent | undefined>;
   copyObject(sourceKey: string, destinationKey: string): Promise<void>;
   deleteObject(key: string): Promise<void>;
 }
@@ -43,7 +55,7 @@ export class InMemoryObjectStorage implements ObjectStorage {
   readonly stagingPrefix: string;
   readonly livePrefix: string;
   private readonly uploadBaseUrl: string;
-  private readonly objects = new Map<string, StoredObjectMetadata>();
+  private readonly objects = new Map<string, StoredObjectContent>();
 
   constructor(options: ObjectStorageOptions = {}) {
     this.bucket = options.bucket ?? 'divband-local';
@@ -69,7 +81,25 @@ export class InMemoryObjectStorage implements ObjectStorage {
   }
 
   async headObject(key: string): Promise<StoredObjectMetadata | undefined> {
-    return this.objects.get(key);
+    const object = this.objects.get(key);
+    return object ? { key: object.key, contentLength: object.contentLength, checksumSha256: object.checksumSha256 } : undefined;
+  }
+
+  async putObject(input: PutObjectInput): Promise<StoredObjectMetadata> {
+    const checksumSha256 = input.checksumSha256 ?? sha256Base64Url(input.body);
+    const object: StoredObjectContent = {
+      key: input.key,
+      contentLength: input.body.byteLength,
+      checksumSha256,
+      body: input.body.slice(),
+    };
+    this.objects.set(input.key, object);
+    return { key: object.key, contentLength: object.contentLength, checksumSha256: object.checksumSha256 };
+  }
+
+  async getObject(key: string): Promise<StoredObjectContent | undefined> {
+    const object = this.objects.get(key);
+    return object ? { ...object, body: object.body.slice() } : undefined;
   }
 
   async copyObject(sourceKey: string, destinationKey: string): Promise<void> {
@@ -77,7 +107,7 @@ export class InMemoryObjectStorage implements ObjectStorage {
     if (!source) {
       throw new Error(`Object not found: ${sourceKey}`);
     }
-    this.objects.set(destinationKey, { ...source, key: destinationKey });
+    this.objects.set(destinationKey, { ...source, key: destinationKey, body: source.body.slice() });
   }
 
   async deleteObject(key: string): Promise<void> {
@@ -85,7 +115,7 @@ export class InMemoryObjectStorage implements ObjectStorage {
   }
 
   putUploadedObject(metadata: StoredObjectMetadata): void {
-    this.objects.set(metadata.key, metadata);
+    this.objects.set(metadata.key, { ...metadata, body: new Uint8Array(metadata.contentLength) });
   }
 }
 
@@ -145,6 +175,31 @@ export class S3ObjectStorage implements ObjectStorage {
     return { key, contentLength, checksumSha256 };
   }
 
+  async putObject(input: PutObjectInput): Promise<StoredObjectMetadata> {
+    const checksumSha256 = input.checksumSha256 ?? sha256Base64Url(input.body);
+    const headers = uploadHeaders({
+      key: input.key,
+      contentType: 'application/octet-stream',
+      contentLength: input.body.byteLength,
+      checksumSha256,
+      expiresAt: new Date(Date.now() + PUBLISHING_LIMITS.uploadPlan.expiresInSeconds * 1000).toISOString(),
+    });
+    const response = await this.signedFetch('PUT', this.objectUrl(input.key), headers, Buffer.from(input.body) as unknown as BodyInit);
+    await this.requireOk(response, `put object ${input.key}`);
+    return { key: input.key, contentLength: input.body.byteLength, checksumSha256 };
+  }
+
+  async getObject(key: string): Promise<StoredObjectContent | undefined> {
+    const response = await this.signedFetch('GET', this.objectUrl(key));
+    if (response.status === 404) {
+      return undefined;
+    }
+    await this.requireOk(response, `get object ${key}`);
+    const body = new Uint8Array(await response.arrayBuffer());
+    const checksumSha256 = response.headers.get('x-amz-meta-divband-sha256') ?? response.headers.get('x-amz-checksum-sha256') ?? sha256Base64Url(body);
+    return { key, contentLength: body.byteLength, checksumSha256, body };
+  }
+
   async copyObject(sourceKey: string, destinationKey: string): Promise<void> {
     const headers = {
       'x-amz-copy-source': `/${this.bucket}/${encodeS3Key(sourceKey)}`,
@@ -159,9 +214,9 @@ export class S3ObjectStorage implements ObjectStorage {
     await this.requireOk(response, `delete object ${key}`);
   }
 
-  private async signedFetch(method: string, url: URL, headers: Record<string, string> = {}): Promise<Response> {
+  private async signedFetch(method: string, url: URL, headers: Record<string, string> = {}, body?: BodyInit): Promise<Response> {
     const signedHeaders = this.authorizationHeaders(method, url, headers);
-    return fetch(url, { method, headers: { ...headers, ...signedHeaders } });
+    return fetch(url, { method, headers: { ...headers, ...signedHeaders }, body });
   }
 
   private async requireOk(response: Response, action: string): Promise<void> {
@@ -317,6 +372,10 @@ function awsEncode(value: string): string {
 
 function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function sha256Base64Url(value: Uint8Array): string {
+  return `sha256-${createHash('sha256').update(Buffer.from(value)).digest('base64url')}`;
 }
 
 function hmac(key: string | Uint8Array, value: string): Uint8Array {

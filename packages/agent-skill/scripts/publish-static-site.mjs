@@ -34,11 +34,14 @@ for (const upload of publish.upload.uploads) {
   }
 }
 
-await fetch(publish.finalizeUrl, {
+const finalizeResponse = await fetch(publish.finalizeUrl, {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
   body: JSON.stringify({ versionId: publish.upload.versionId }),
 });
+if (!finalizeResponse.ok) {
+  throw new Error(`Finalize failed: HTTP ${finalizeResponse.status}`);
+}
 
 console.log(JSON.stringify({ siteUrl: publish.siteUrl, slug: publish.slug, expiresAt: publish.expiresAt, claimToken: publish.claimToken }, null, 2));
 

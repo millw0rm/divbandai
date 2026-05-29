@@ -114,6 +114,27 @@ Expected highlights:
 
 Open `http://localhost:5173` in a browser, sign in as `dev@example.com` with password `correct-horse`, and verify the project appears in the dashboard. The project overview should show the deployed status and the latest deployment details.
 
+
+## Agent static publish smoke path
+
+The local backend now supports the complete in-memory static publish loop: create a publish session, upload each file to the returned local presigned URL, finalize the version, and serve it back through the static host resolver. The root `npm test` command runs this through `npm run smoke:publish --workspace @divband/backend`.
+
+For a manual check while `npm run dev:backend` is running, create a small build directory and publish it with the bundled agent helper:
+
+```sh
+mkdir -p /tmp/divband-static-smoke
+printf '<!doctype html><h1>hello from divband</h1>' > /tmp/divband-static-smoke/index.html
+DIVBAND_API_BASE_URL=http://localhost:3000 node packages/agent-skill/scripts/publish-static-site.mjs /tmp/divband-static-smoke --anonymous
+```
+
+The helper uploads to the local backend's in-memory object storage URL and finalizes the returned version. To fetch the served object without configuring DNS, send the platform hostname in the `Host` header:
+
+```sh
+curl -sS -H 'Host: <returned-slug>.localhost.test' http://localhost:3000/
+```
+
+Replace `<returned-slug>` with the `slug` printed by the helper. The response should contain the uploaded `index.html` content.
+
 ## Useful checks
 
 Run a repository-wide typecheck from the root:

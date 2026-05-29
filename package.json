@@ -12,7 +12,7 @@
     "dev:frontend": "DIVBAND_API_BASE_URL=http://localhost:3000 npm run dev --workspace @divband/frontend",
     "dev:mvp": "sh -c 'npm run dev:backend & backend_pid=$!; trap \"kill $backend_pid\" INT TERM EXIT; sleep 2; npm run dev:frontend'",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "test": "npm run typecheck && npm run smoke:controls --workspace @divband/backend && npm run smoke:restore --workspace @divband/backend"
+    "test": "npm run typecheck && npm run smoke:controls --workspace @divband/backend && npm run smoke:restore --workspace @divband/backend && npm run smoke:publish --workspace @divband/backend"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
