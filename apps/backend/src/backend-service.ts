@@ -1,5 +1,5 @@
 import { can, assignableRoles, type ProjectPermission, type ProjectRole } from '@divband/auth';
-import { createProjectLifecyclePlan, type ProjectStatus } from './project-lifecycle';
+import { createProjectLifecyclePlan, type ProjectStatus } from './project-lifecycle.ts';
 import type {
   AiChangeRequest,
   AiCiStatus,
@@ -23,17 +23,17 @@ import type {
   ProjectMembership,
   PublishRequest,
   User,
-} from './models';
-import { defaultStore, type BackendStore } from './store';
-import { AuthService, type CreateApiTokenInput, type LinkGitLabIdentityInput, type LinkOAuthIdentityInput, type LoginInput, type RegisterInput } from './services/auth';
-import { AuditLogService } from './services/audit-log';
-import { CertificateStatusService } from './services/certificate-status';
-import { DeploymentStatusService, type DeploymentStatusReport } from './services/deployment-status';
-import { DnsVerificationService } from './services/dns-verification';
-import { GitLabService } from './services/gitlab';
-import { KubernetesService } from './services/kubernetes';
-import { PublishingService } from './services/publishing';
-import { createId, maskSecret, normalizeSlug, nowIso } from './utils';
+} from './models.ts';
+import { defaultStore, type BackendStore } from './store.ts';
+import { AuthService, type CreateApiTokenInput, type LinkGitLabIdentityInput, type LinkOAuthIdentityInput, type LoginInput, type RegisterInput } from './services/auth.ts';
+import { AuditLogService } from './services/audit-log.ts';
+import { CertificateStatusService } from './services/certificate-status.ts';
+import { DeploymentStatusService, type DeploymentStatusReport } from './services/deployment-status.ts';
+import { DnsVerificationService } from './services/dns-verification.ts';
+import { GitLabService } from './services/gitlab.ts';
+import { KubernetesService } from './services/kubernetes.ts';
+import { PublishingService } from './services/publishing.ts';
+import { createId, maskSecret, normalizeSlug, nowIso } from './utils.ts';
 
 interface RouteMatch {
   segments: string[];

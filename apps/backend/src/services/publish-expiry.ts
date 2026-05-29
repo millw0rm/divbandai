@@ -1,5 +1,5 @@
-import type { Publish, PublishedSite } from '../models';
-import type { BackendStore } from '../store';
+import type { Publish, PublishedSite } from '../models.ts';
+import type { BackendStore } from '../store.ts';
 
 export interface PublishExpiryCleanupResult {
   deletedPublishes: string[];

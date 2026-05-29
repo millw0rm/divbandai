@@ -1,7 +1,7 @@
 import { roleAtLeast } from '@divband/auth';
-import type { ApiToken, AuthActor, AuthSession, GitLabIdentityLink, OAuthIdentity, ProjectMembership, User } from '../models';
-import type { BackendStore } from '../store';
-import { createId, nowIso } from '../utils';
+import type { ApiToken, AuthActor, AuthSession, GitLabIdentityLink, OAuthIdentity, ProjectMembership, User } from '../models.ts';
+import type { BackendStore } from '../store.ts';
+import { createId, nowIso } from '../utils.ts';
 
 export interface RegisterInput {
   email: string;

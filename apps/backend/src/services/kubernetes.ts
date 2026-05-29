@@ -1,4 +1,4 @@
-import type { Project } from '../models';
+import type { Project } from '../models.ts';
 
 export interface KubernetesNamespace {
   name: string;

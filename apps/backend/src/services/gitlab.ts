@@ -1,4 +1,4 @@
-import type { AiChangeRequest, AiPatchProposal, Project } from '../models';
+import type { AiChangeRequest, AiPatchProposal, Project } from '../models.ts';
 
 export interface GitLabRepository {
   path: string;

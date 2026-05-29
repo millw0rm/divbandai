@@ -1,5 +1,5 @@
 import type { ProjectRole } from '@divband/auth';
-import type { ProjectStatus } from './project-lifecycle';
+import type { ProjectStatus } from './project-lifecycle.ts';
 
 export type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 export interface JsonObject {

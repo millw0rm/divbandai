@@ -1,4 +1,4 @@
-import type { CertificateState, ProjectDomain } from '../models';
+import type { CertificateState, ProjectDomain } from '../models.ts';
 
 export class CertificateStatusService {
   getStatus(domain: ProjectDomain): CertificateState {

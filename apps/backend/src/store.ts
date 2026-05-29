@@ -15,7 +15,7 @@ import type {
   PublishedVersion,
   UploadSession,
   User,
-} from './models';
+} from './models.ts';
 
 export interface BackendStore {
   users: Map<string, User>;
@@ -36,6 +36,32 @@ export interface BackendStore {
   publishedVersions: Map<string, PublishedVersion>;
   publishedFiles: PublishedFile[];
   uploadSessions: Map<string, UploadSession>;
+}
+
+export interface BackendStoreSnapshot {
+  users: User[];
+  usersByEmail: Array<[string, string]>;
+  passwordHashesByUserId: Array<[string, string]>;
+  sessions: AuthSession[];
+  apiTokens: ApiToken[];
+  organizations: Organization[];
+  organizationMemberships: OrganizationMembership[];
+  projects: Project[];
+  projectMemberships: ProjectMembership[];
+  oauthIdentities: OAuthIdentity[];
+  gitlabIdentityLinks: GitLabIdentityLink[];
+  auditEvents: AuditEvent[];
+  aiChangeRequests: AiChangeRequest[];
+  publishes: Publish[];
+  publishedSites: PublishedSite[];
+  publishedVersions: PublishedVersion[];
+  publishedFiles: PublishedFile[];
+  uploadSessions: UploadSession[];
+}
+
+export interface PersistenceAdapter {
+  load(): Promise<BackendStoreSnapshot | undefined>;
+  save(snapshot: BackendStoreSnapshot): Promise<void>;
 }
 
 export function createBackendStore(): BackendStore {
@@ -59,6 +85,55 @@ export function createBackendStore(): BackendStore {
     publishedFiles: [],
     uploadSessions: new Map(),
   };
+}
+
+export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot {
+  return {
+    users: [...store.users.values()],
+    usersByEmail: [...store.usersByEmail.entries()],
+    passwordHashesByUserId: [...store.passwordHashesByUserId.entries()],
+    sessions: [...store.sessions.values()],
+    apiTokens: [...store.apiTokens.values()],
+    organizations: [...store.organizations.values()],
+    organizationMemberships: [...store.organizationMemberships.values()],
+    projects: [...store.projects.values()],
+    projectMemberships: [...store.projectMemberships.values()],
+    oauthIdentities: [...store.oauthIdentities.values()],
+    gitlabIdentityLinks: [...store.gitlabIdentityLinks.values()],
+    auditEvents: [...store.auditEvents],
+    aiChangeRequests: [...store.aiChangeRequests.values()],
+    publishes: [...store.publishes.values()],
+    publishedSites: [...store.publishedSites.values()],
+    publishedVersions: [...store.publishedVersions.values()],
+    publishedFiles: [...store.publishedFiles],
+    uploadSessions: [...store.uploadSessions.values()],
+  };
+}
+
+export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: BackendStore = createBackendStore()): BackendStore {
+  store.users = mapById(snapshot.users);
+  store.usersByEmail = new Map(snapshot.usersByEmail);
+  store.passwordHashesByUserId = new Map(snapshot.passwordHashesByUserId);
+  store.sessions = new Map(snapshot.sessions.map((session) => [session.token, session]));
+  store.apiTokens = mapById(snapshot.apiTokens);
+  store.organizations = mapById(snapshot.organizations);
+  store.organizationMemberships = mapById(snapshot.organizationMemberships);
+  store.projects = mapById(snapshot.projects);
+  store.projectMemberships = mapById(snapshot.projectMemberships);
+  store.oauthIdentities = mapById(snapshot.oauthIdentities);
+  store.gitlabIdentityLinks = mapById(snapshot.gitlabIdentityLinks);
+  store.auditEvents = [...snapshot.auditEvents];
+  store.aiChangeRequests = mapById(snapshot.aiChangeRequests);
+  store.publishes = new Map(snapshot.publishes.map((publish) => [publish.slug, publish]));
+  store.publishedSites = mapById(snapshot.publishedSites);
+  store.publishedVersions = mapById(snapshot.publishedVersions);
+  store.publishedFiles = [...snapshot.publishedFiles];
+  store.uploadSessions = new Map(snapshot.uploadSessions.map((session) => [session.versionId, session]));
+  return store;
+}
+
+function mapById<T extends { id: string }>(values: T[]): Map<string, T> {
+  return new Map(values.map((value) => [value.id, value]));
 }
 
 export const defaultStore = createBackendStore();

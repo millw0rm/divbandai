@@ -1,5 +1,5 @@
-import type { PublishedFile, PublishedSite } from '../models';
-import type { BackendStore } from '../store';
+import type { PublishedFile, PublishedSite } from '../models.ts';
+import type { BackendStore } from '../store.ts';
 
 export interface StaticServingOptions {
   platformDomain?: string;

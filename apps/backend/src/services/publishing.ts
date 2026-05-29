@@ -6,10 +6,10 @@ import type {
   PublishResponse,
   PublishUploadPlan,
   PublishVersion,
-} from '../models';
-import type { BackendStore } from '../store';
-import { PUBLISHING_LIMITS } from '../publishing/limits';
-import { createId, normalizeSlug, nowIso } from '../utils';
+} from '../models.ts';
+import type { BackendStore } from '../store.ts';
+import { PUBLISHING_LIMITS } from '../publishing/limits.ts';
+import { createId, normalizeSlug, nowIso } from '../utils.ts';
 
 export class PublishingService {
   constructor(private readonly store: BackendStore) {}

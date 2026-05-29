@@ -1,5 +1,5 @@
-import type { Deployment, DeploymentEnvironment, DeploymentState, Project } from '../models';
-import { createId, nowIso } from '../utils';
+import type { Deployment, DeploymentEnvironment, DeploymentState, Project } from '../models.ts';
+import { createId, nowIso } from '../utils.ts';
 
 export interface DeploymentStatusReport {
   deploymentId?: string;

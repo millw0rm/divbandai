@@ -1,4 +1,4 @@
-import { createId } from '../utils';
+import { createId } from '../utils.ts';
 
 export interface DnsVerificationChallenge {
   token: string;
