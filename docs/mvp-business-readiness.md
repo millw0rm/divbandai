@@ -1,0 +1,103 @@
+# MVP business readiness assessment
+
+This assessment answers whether Divband is ready to receive a list of VM IP addresses, start the infrastructure, and operate as an MVP business.
+
+## Short answer
+
+Divband now has an infrastructure bootstrap path for an MVP pilot: an operator can copy the Ansible inventory, replace the example hosts with real VM IPs, configure required domains/tokens/secrets, and run the site playbook to prepare hosts, create a k3s cluster, install shared add-ons, connect GitLab, register runners, and deploy the Divband control plane.
+
+That means the project is ready for an **operator-run MVP pilot** after real environment values are supplied. It is **not yet ready to be advertised as a fully self-service public paid business** without completing the product release checklist, durable provider integrations, operational monitoring, backups, billing, abuse controls, and security review.
+
+## What is ready for VM-IP bootstrap
+
+| Capability | Status | Evidence |
+| --- | --- | --- |
+| VM inventory model | Ready for operator configuration | `infra/ansible/inventory.example.yml` defines the expected host groups and example IP replacements. |
+| Full bootstrap command | Ready for operator execution | `infra/ansible/playbooks/site.yml` is the main playbook for common host prep, Kubernetes, add-ons, GitLab, runners, and Divband app deployment. |
+| Kubernetes cluster path | Ready for k3s-based MVP environments | The Ansible `kubernetes` role supports k3s control-plane and worker setup, kubeconfig rendering, and local kubeconfig artifact export. |
+| Shared cluster add-ons | Ready as initial automation | The site playbook installs ingress, cert-manager, External Secrets, observability, and Divband app roles on the first control-plane node. |
+| GitLab connection/provisioning layer | Ready as an operator-controlled step | The GitLab role supports connect/install modes, while `infra/gitlab/terraform` provisions tenant/project resources. |
+| Runner setup | Ready after runner tokens exist | The runner role installs GitLab Runner and can resolve project-specific runner tags/tokens from Terraform outputs. |
+| Tenant runtime templates | Ready as templates | `infra/k8s/base` contains namespace, quota, RBAC, network policy, workload, ingress, certificate, and ExternalSecret templates. |
+| Reference architecture | Documented | `docs/vm-reference-architecture.md` describes minimal and production-oriented VM layouts and maps them to Ansible groups. |
+
+## Values required before running on real VMs
+
+Before running `ansible-playbook -i inventory.yml playbooks/site.yml`, configure these with real values:
+
+1. SSH user, private key path, and operator public keys.
+2. Real host IPs or DNS names in the Ansible inventory groups.
+3. Platform domains and DNS records for the dashboard/API, tenant wildcard routing, GitLab if self-hosted, and ingress endpoint.
+4. Kubernetes API endpoint or load-balancer endpoint.
+5. cert-manager ACME email and issuer settings.
+6. External secret backend endpoint and authentication material.
+7. GitLab URL and provisioner token.
+8. GitLab runner authentication tokens or Terraform output access for runner registration.
+9. Divband backend/frontend image references or build/publish pipeline outputs.
+10. Object-storage and database decisions for anything beyond a short-lived pilot.
+
+## MVP pilot acceptance checks
+
+After bootstrap, the environment should pass these checks before inviting a pilot customer:
+
+```sh
+ansible-playbook -i inventory.yml playbooks/site.yml --check
+ansible-playbook -i inventory.yml playbooks/site.yml
+kubectl get nodes -o wide
+kubectl get pods -A
+kubectl get clusterissuer
+kubectl -n divband-system get deployments,services,secrets
+terraform -chdir=infra/gitlab/terraform plan
+terraform -chdir=infra/gitlab/terraform output
+curl -fsS https://REPLACE_WITH_API_HOSTNAME/healthz
+```
+
+Expected outcomes:
+
+- All Kubernetes nodes are `Ready`.
+- ingress-nginx, cert-manager, External Secrets, metrics-server, logging, backend, and frontend workloads are running.
+- The configured `ClusterIssuer` is ready or has an understood DNS/HTTP-01 remediation path.
+- GitLab runners are online and tagged only for the projects they should deploy.
+- The backend can render/apply tenant manifests with `KUBERNETES_TEMPLATE_DIR` and `KUBERNETES_APPLY` configured intentionally.
+- A test project can be created, assigned a GitLab project, deployed into a Kubernetes namespace, and reached through the platform hostname.
+
+## Business readiness boundary
+
+### Ready for
+
+- Internal demos on persistent VMs.
+- Founder/operator-driven pilot deployments.
+- Private alpha environments where an operator can manually supervise DNS, secrets, runner tokens, and incident response.
+- Validating the end-to-end GitLab/Kubernetes architecture before adding managed production dependencies.
+
+### Not ready for, without more work
+
+- Unsupervised public signup.
+- Paid self-service hosting.
+- Strong uptime/SLO promises.
+- Automated billing and quota enforcement.
+- Production-grade abuse handling for anonymous publishing.
+- Fully automated provider DNS and custom-domain lifecycle for arbitrary customer domains.
+- Production disaster recovery, backup restore drills, and incident staffing.
+
+## Work required before public MVP business launch
+
+Complete these before positioning Divband as a public MVP business:
+
+1. Replace SQLite/local prototype persistence with a production database, migrations, backups, and restore tests.
+2. Configure durable object storage for static publish artifacts, deployment artifacts, and backup handoff.
+3. Harden authentication/session management and API token lifecycle.
+4. Automate DNS, TLS, and custom-domain lifecycle checks end to end.
+5. Add monitoring dashboards, alerts, log retention, audit views, and on-call runbooks.
+6. Enforce plan quotas, rate limits, retention limits, and abuse scanning.
+7. Add billing/tier enforcement if charging customers.
+8. Run a security review covering auth, tenant isolation, GitLab tokens, Kubernetes RBAC, runner isolation, domain takeover, and secret handling.
+9. Add end-to-end smoke tests for signup, project creation, GitLab project creation, Kubernetes namespace provisioning, deployment, platform hostname routing, custom-domain verification, and rollback.
+10. Document support, terms, privacy, abuse reporting, incident response, and backup/restore processes.
+
+## Recommended launch sequence
+
+1. **Infrastructure smoke:** run the Ansible playbook on disposable VMs and validate cluster/add-on health.
+2. **Operator pilot:** deploy one internal project using real GitLab and Kubernetes paths.
+3. **Private alpha:** invite a small number of supervised users; keep manual approval for domains and deployments.
+4. **Public MVP:** launch only after release checklist, monitoring, backup, auth, billing/limits, and security requirements are complete.
