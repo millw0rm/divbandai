@@ -8,6 +8,14 @@ metadata:
     app.kubernetes.io/component: backend
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/project-slug: REPLACE_WITH_SLUG
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   replicas: REPLACE_WITH_BACKEND_REPLICAS
   selector:
@@ -22,6 +30,14 @@ spec:
         divband.io/project-id: REPLACE_WITH_PROJECT_ID
         divband.io/project-slug: REPLACE_WITH_SLUG
         divband.io/expose: internal
+        divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+        divband.io/environment: REPLACE_WITH_ENVIRONMENT
+        divband.io/owner-id: REPLACE_WITH_OWNER_ID
+      annotations:
+        divband.io/project-id: REPLACE_WITH_PROJECT_ID
+        divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+        divband.io/environment: REPLACE_WITH_ENVIRONMENT
+        divband.io/owner-id: REPLACE_WITH_OWNER_ID
     spec:
       serviceAccountName: project-deployer
       containers:
@@ -59,6 +75,14 @@ metadata:
   labels:
     app.kubernetes.io/name: backend
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   type: ClusterIP
   selector:

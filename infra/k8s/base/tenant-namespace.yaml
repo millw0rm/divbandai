@@ -10,6 +10,12 @@ metadata:
     divband.io/owner-id: REPLACE_WITH_OWNER_ID
     divband.io/environment: REPLACE_WITH_ENVIRONMENT
     divband.io/lifecycle-state: active
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 ---
 apiVersion: v1
 kind: ResourceQuota
@@ -18,6 +24,14 @@ metadata:
   namespace: project-REPLACE_WITH_SLUG
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   hard:
     requests.cpu: REPLACE_WITH_QUOTA_REQUESTS_CPU
@@ -40,6 +54,14 @@ metadata:
   namespace: project-REPLACE_WITH_SLUG
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   limits:
     - type: Container

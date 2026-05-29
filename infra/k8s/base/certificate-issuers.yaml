@@ -12,6 +12,15 @@ metadata:
   labels:
     app.kubernetes.io/name: cert-manager
     app.kubernetes.io/part-of: divband-routing
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   acme:
     email: REPLACE_WITH_ACME_ACCOUNT_EMAIL
@@ -30,6 +39,15 @@ metadata:
   labels:
     app.kubernetes.io/name: cert-manager
     app.kubernetes.io/part-of: divband-routing
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   acme:
     email: REPLACE_WITH_ACME_ACCOUNT_EMAIL

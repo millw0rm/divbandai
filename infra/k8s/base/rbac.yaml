@@ -6,6 +6,14 @@ metadata:
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/project-slug: REPLACE_WITH_SLUG
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -14,6 +22,14 @@ metadata:
   namespace: project-REPLACE_WITH_SLUG
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 rules:
   - apiGroups: ['apps']
     resources: ['deployments', 'replicasets']
@@ -44,6 +60,14 @@ metadata:
   namespace: project-REPLACE_WITH_SLUG
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 subjects:
   - kind: ServiceAccount
     name: project-deployer

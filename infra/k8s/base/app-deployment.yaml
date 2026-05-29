@@ -13,6 +13,14 @@ metadata:
     app.kubernetes.io/name: web
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/project-slug: REPLACE_WITH_SLUG
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   replicas: REPLACE_WITH_WEB_REPLICAS
   selector:
@@ -26,6 +34,14 @@ spec:
         divband.io/project-id: REPLACE_WITH_PROJECT_ID
         divband.io/project-slug: REPLACE_WITH_SLUG
         divband.io/expose: public
+        divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+        divband.io/environment: REPLACE_WITH_ENVIRONMENT
+        divband.io/owner-id: REPLACE_WITH_OWNER_ID
+      annotations:
+        divband.io/project-id: REPLACE_WITH_PROJECT_ID
+        divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+        divband.io/environment: REPLACE_WITH_ENVIRONMENT
+        divband.io/owner-id: REPLACE_WITH_OWNER_ID
     spec:
       serviceAccountName: project-deployer
       containers:
@@ -49,8 +65,18 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  annotations:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
   name: web
   namespace: project-REPLACE_WITH_SLUG
+  labels:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
 spec:
   selector:
     app.kubernetes.io/name: web
