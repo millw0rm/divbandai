@@ -1,8 +1,11 @@
 ---
 divband_namespace: divband-system
 divband_public_hostname: app.divband.ir
-divband_backend_image: registry.gitlab.com/divband/control-plane/backend:latest
-divband_frontend_image: registry.gitlab.com/divband/control-plane/frontend:latest
+divband_image_tag: "{{ lookup('env', 'DIVBAND_IMAGE_TAG') | default('REPLACE_WITH_COMMIT_SHA', true) }}"
+divband_backend_image_repository: registry.gitlab.com/divband/control-plane/backend
+divband_frontend_image_repository: registry.gitlab.com/divband/control-plane/frontend
+divband_backend_image: "{{ divband_backend_image_repository }}:{{ divband_image_tag }}"
+divband_frontend_image: "{{ divband_frontend_image_repository }}:{{ divband_image_tag }}"
 divband_backend_replicas: 2
 divband_frontend_replicas: 2
 divband_backend_port: 3000

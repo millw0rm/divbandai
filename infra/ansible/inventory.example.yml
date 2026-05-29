@@ -38,8 +38,14 @@ all:
     gitlab_runner_executor: kubernetes
 
     divband_namespace: divband-system
-    divband_backend_image: registry.gitlab.com/divband/control-plane/backend:latest
-    divband_frontend_image: registry.gitlab.com/divband/control-plane/frontend:latest
+    # Use the immutable commit SHA tag published by CI. Set
+    # DEPLOYMENT_IMAGE_TAG in CI only when you intentionally want an additional
+    # mutable deployment pointer such as staging or production.
+    divband_image_tag: REPLACE_WITH_COMMIT_SHA
+    divband_backend_image_repository: registry.gitlab.com/divband/control-plane/backend
+    divband_frontend_image_repository: registry.gitlab.com/divband/control-plane/frontend
+    divband_backend_image: "{{ divband_backend_image_repository }}:{{ divband_image_tag }}"
+    divband_frontend_image: "{{ divband_frontend_image_repository }}:{{ divband_image_tag }}"
     divband_public_hostname: app.divband.ir
 
     # Production control-plane application settings. Replace every placeholder
