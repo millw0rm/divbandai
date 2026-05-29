@@ -70,10 +70,10 @@ curl -sS -X POST http://localhost:3000/auth/register \
   -d '{"email":"dev@example.com","name":"Dev User","password":"correct-horse"}'
 ```
 
-Copy the returned `session.token` into `TOKEN`, then create a project:
+Copy the one-time returned top-level `token` into `TOKEN`, then create a project:
 
 ```sh
-TOKEN='session_token_from_register_response'
+TOKEN='token_from_register_response'
 PROJECT_ID=$(curl -sS -X POST http://localhost:3000/projects \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \

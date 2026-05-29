@@ -79,3 +79,32 @@ declare module 'node:child_process' {
 declare module 'node:dns/promises' {
   export function resolveTxt(hostname: string): Promise<string[][]>;
 }
+
+
+declare const Buffer: {
+  from(input: string | Uint8Array, encoding?: 'utf8' | 'base64' | 'base64url' | 'hex'): Uint8Array & { toString(encoding?: 'utf8' | 'base64' | 'base64url' | 'hex'): string };
+};
+
+declare module 'node:crypto' {
+  export function randomBytes(size: number): Uint8Array & { toString(encoding?: 'base64' | 'base64url' | 'hex'): string };
+  export function scryptSync(password: string, salt: string, keylen: number, options?: { N?: number; r?: number; p?: number; maxmem?: number }): Uint8Array;
+  export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
+  export function createHash(algorithm: 'sha256'): {
+    update(data: string): { digest(encoding: 'hex'): string };
+    digest(encoding: 'hex'): string;
+  };
+  export function createHmac(algorithm: 'sha256', key: string): {
+    update(data: string): { digest(encoding: 'hex'): string };
+    digest(encoding: 'hex'): string;
+  };
+  export function createCipheriv(algorithm: 'aes-256-gcm', key: Uint8Array, iv: Uint8Array): {
+    update(data: string, inputEncoding: 'utf8'): Uint8Array;
+    final(): Uint8Array;
+    getAuthTag(): Uint8Array & { toString(encoding: 'base64'): string };
+  };
+  export function createDecipheriv(algorithm: 'aes-256-gcm', key: Uint8Array, iv: Uint8Array): {
+    setAuthTag(tag: Uint8Array): void;
+    update(data: Uint8Array): Uint8Array;
+    final(): Uint8Array;
+  };
+}

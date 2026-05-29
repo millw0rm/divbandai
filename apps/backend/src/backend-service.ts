@@ -11,6 +11,7 @@ import type {
   ApiResponse,
   ApiToken,
   AuthActor,
+  AuthSession,
   Deployment,
   DeploymentState,
   EnvironmentVariable,
@@ -33,7 +34,8 @@ import { DnsVerificationService } from './services/dns-verification.ts';
 import { GitLabService } from './services/gitlab.ts';
 import { KubernetesService } from './services/kubernetes.ts';
 import { PublishingService, type PublishingServiceOptions } from './services/publishing.ts';
-import { createId, maskSecret, normalizeSlug, nowIso } from './utils.ts';
+import { ProjectSecretService } from './services/secrets.ts';
+import { createId, normalizeSlug, nowIso } from './utils.ts';
 
 interface RouteMatch {
   segments: string[];
@@ -60,10 +62,12 @@ export class BackendService {
   private readonly gitlab = new GitLabService();
   private readonly kubernetes = new KubernetesService();
   private readonly publishing: PublishingService;
+  private readonly secrets: ProjectSecretService;
 
   constructor(private readonly store: BackendStore = defaultStore, publishingOptions: PublishingServiceOptions = {}) {
     this.auth = new AuthService(store);
     this.audit = new AuditLogService(store);
+    this.secrets = new ProjectSecretService(store);
     this.publishing = new PublishingService(store, publishingOptions);
   }
 
@@ -76,13 +80,34 @@ export class BackendService {
         const result = this.auth.register(this.registerInput(request.body));
         this.ensurePersonalOrganization(result.user);
         this.audit.record(result.user.id, 'user.registered', { email: result.user.email });
-        return this.created(result);
+        return this.created(this.authResponse(result));
       }
 
       if (method === 'POST' && this.matches(route, 'auth', 'login')) {
         const result = this.auth.login(this.loginInput(request.body));
         this.audit.record(result.user.id, 'user.logged_in', { email: result.user.email });
-        return this.ok(result);
+        return this.ok(this.authResponse(result));
+      }
+
+      if (method === 'POST' && this.matches(route, 'auth', 'logout')) {
+        const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
+        const session = this.auth.revokeCurrentSession(actor);
+        this.audit.record(actor.user.id, 'user.session_revoked', { sessionId: session.id });
+        return this.ok({ session: this.redactSession(session) });
+      }
+
+      if (method === 'DELETE' && route.segments[0] === 'auth' && route.segments[1] === 'sessions' && route.segments[2]) {
+        const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
+        const session = this.auth.revokeSession(actor.user.id, route.segments[2]);
+        this.audit.record(actor.user.id, 'user.session_revoked', { sessionId: session.id });
+        return this.ok({ session: this.redactSession(session) });
+      }
+
+      if (method === 'POST' && this.matches(route, 'auth', 'sessions', 'cleanup')) {
+        const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
+        const deleted = this.auth.cleanupExpiredSessions();
+        this.audit.record(actor.user.id, 'user.sessions_cleaned', { deleted });
+        return this.ok({ deleted });
       }
 
       if (this.isPublishingRoute(route)) {
@@ -313,12 +338,17 @@ export class BackendService {
 
         if (method === 'GET' && this.matches(route, 'projects', projectId, 'environment-variables')) {
           const { project } = this.requireProject(projectId, actor, 'secret:read');
-          return this.ok({ environmentVariables: project.environmentVariables.map((variable) => ({ ...variable, value: maskSecret(variable.value) })) });
+          return this.ok({ environmentVariables: this.secrets.list(project) });
         }
 
         if (method === 'PUT' && this.matches(route, 'projects', projectId, 'environment-variables')) {
           const { project } = this.requireProject(projectId, actor, 'secret:manage');
           return this.ok({ environmentVariables: this.upsertEnvironmentVariables(project, user, this.requiredObject(request.body)) });
+        }
+
+        if (method === 'GET' && route.segments[2] === 'environment-variables' && route.segments[3] && route.segments[4] === 'value') {
+          const { project } = this.requireProject(projectId, actor, 'secret:read');
+          return this.ok({ environmentVariable: this.readEnvironmentVariable(project, user, route.segments[3], request) });
         }
 
         if (method === 'DELETE' && route.segments[2] === 'environment-variables' && route.segments[3]) {
@@ -359,7 +389,6 @@ export class BackendService {
       platformSubdomainAttached: false,
       domains: [],
       deployments: [],
-      environmentVariables: [],
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -396,7 +425,7 @@ export class BackendService {
   }
 
   private async createGitLabRepository(project: Project, user: User): Promise<unknown> {
-    const repository = await this.gitlab.createRepository(project);
+    const repository = await this.gitlab.createRepository(project, this.secrets.list(project, { reveal: true }));
     await this.gitlab.configureRunnerTag(project);
     project.repositoryUrl = repository.webUrl;
     this.touch(project, 'repository_provisioned');
@@ -684,7 +713,7 @@ export class BackendService {
   }
 
   private redactedSecretNames(project: Project): string[] {
-    return project.environmentVariables.filter((variable) => variable.protected).map((variable) => variable.key);
+    return this.secrets.protectedKeys(project);
   }
 
   private touchAiChangeRequest(changeRequest: AiChangeRequest, status: AiChangeRequest['status']): void {
@@ -705,42 +734,28 @@ export class BackendService {
   }
 
   private upsertEnvironmentVariables(project: Project, user: User, body: Record<string, unknown>): EnvironmentVariable[] {
-    const variables = Array.isArray(body.variables) ? body.variables : [];
-    for (const rawVariable of variables) {
-      if (!this.isRecord(rawVariable) || typeof rawVariable.key !== 'string' || typeof rawVariable.value !== 'string') {
-        throw new Error('Each environment variable requires a string key and value.');
-      }
-
-      const key = rawVariable.key.trim().toUpperCase();
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) {
-        throw new Error(`Invalid environment variable key: ${rawVariable.key}`);
-      }
-
-      const existing = project.environmentVariables.find((variable) => variable.key === key);
-      const next: EnvironmentVariable = {
-        key,
-        value: rawVariable.value,
-        protected: rawVariable.protected === true,
-        updatedAt: nowIso(),
-      };
-
-      if (existing) {
-        Object.assign(existing, next);
-      } else {
-        project.environmentVariables.push(next);
-      }
-    }
-
+    const rawVariables = Array.isArray(body.variables) ? body.variables : body.environmentVariables;
+    const environmentVariables = this.secrets.upsert(project, rawVariables);
     this.touch(project);
-    this.audit.record(user.id, 'project.environment_variables_updated', { keys: variables.length }, project.id);
-    return project.environmentVariables.map((variable) => ({ ...variable, value: maskSecret(variable.value) }));
+    this.audit.record(user.id, 'project.environment_variables_updated', { keys: environmentVariables.map((variable) => variable.key) }, project.id);
+    return environmentVariables;
+  }
+
+  private readEnvironmentVariable(project: Project, user: User, key: string, request: ApiRequest): EnvironmentVariable {
+    const intent = request.headers?.['x-divband-secret-read'] ?? request.headers?.['X-Divband-Secret-Read'];
+    if (intent !== 'reveal') {
+      throw new Error('Secret reveal requires X-Divband-Secret-Read: reveal.');
+    }
+    const environmentVariable = this.secrets.require(project, key);
+    this.audit.record(user.id, 'project.environment_variable_revealed', { key: environmentVariable.key }, project.id);
+    return environmentVariable;
   }
 
   private deleteEnvironmentVariable(project: Project, user: User, key: string): EnvironmentVariable[] {
-    project.environmentVariables = project.environmentVariables.filter((variable) => variable.key !== key.toUpperCase());
+    const environmentVariables = this.secrets.delete(project, key);
     this.touch(project);
     this.audit.record(user.id, 'project.environment_variable_deleted', { key: key.toUpperCase() }, project.id);
-    return project.environmentVariables.map((variable) => ({ ...variable, value: maskSecret(variable.value) }));
+    return environmentVariables;
   }
 
   private archiveProject(project: Project, user: User): Project {
@@ -872,6 +887,15 @@ export class BackendService {
       [...this.store.organizationMemberships.values()].filter((membership) => membership.userId === user.id).map((membership) => membership.organizationId),
     );
     return [...this.store.organizations.values()].filter((organization) => organizationIds.has(organization.id));
+  }
+
+  private authResponse(result: { user: User; session: AuthSession; token: string; tokenType: 'Bearer' }): { user: User; session: Omit<AuthSession, 'tokenHash'>; token: string; tokenType: 'Bearer' } {
+    return { user: result.user, session: this.redactSession(result.session), token: result.token, tokenType: result.tokenType };
+  }
+
+  private redactSession(session: AuthSession): Omit<AuthSession, 'tokenHash'> {
+    const { tokenHash: _tokenHash, ...safeSession } = session;
+    return safeSession;
   }
 
   private redactApiToken(apiToken: ApiToken): Omit<ApiToken, 'tokenHash'> {
