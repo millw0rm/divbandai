@@ -9,6 +9,7 @@ import type {
   OrganizationMembership,
   Project,
   ProjectMembership,
+  Publish,
   User,
 } from './models';
 
@@ -26,6 +27,7 @@ export interface BackendStore {
   gitlabIdentityLinks: Map<string, GitLabIdentityLink>;
   auditEvents: AuditEvent[];
   aiChangeRequests: Map<string, AiChangeRequest>;
+  publishes: Map<string, Publish>;
 }
 
 export function createBackendStore(): BackendStore {
@@ -43,6 +45,7 @@ export function createBackendStore(): BackendStore {
     gitlabIdentityLinks: new Map(),
     auditEvents: [],
     aiChangeRequests: new Map(),
+    publishes: new Map(),
   };
 }
 

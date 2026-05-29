@@ -21,6 +21,7 @@ import type {
   Project,
   ProjectDomain,
   ProjectMembership,
+  PublishRequest,
   User,
 } from './models';
 import { defaultStore, type BackendStore } from './store';
@@ -31,6 +32,7 @@ import { DeploymentStatusService, type DeploymentStatusReport } from './services
 import { DnsVerificationService } from './services/dns-verification';
 import { GitLabService } from './services/gitlab';
 import { KubernetesService } from './services/kubernetes';
+import { PublishingService } from './services/publishing';
 import { createId, maskSecret, normalizeSlug, nowIso } from './utils';
 
 interface RouteMatch {
@@ -57,10 +59,12 @@ export class BackendService {
   private readonly dns = new DnsVerificationService();
   private readonly gitlab = new GitLabService();
   private readonly kubernetes = new KubernetesService();
+  private readonly publishing: PublishingService;
 
   constructor(private readonly store: BackendStore = defaultStore) {
     this.auth = new AuthService(store);
     this.audit = new AuditLogService(store);
+    this.publishing = new PublishingService(store);
   }
 
   async handle(request: ApiRequest): Promise<ApiResponse> {
@@ -81,8 +85,50 @@ export class BackendService {
         return this.ok(result);
       }
 
+      if (this.isPublishingRoute(route)) {
+        const actor = this.authenticateOptional(request);
+        const publishSlug = route.segments[3];
+
+        if (method === 'POST' && this.matches(route, 'api', 'v1', 'publish')) {
+          const response = this.publishing.create(this.requiredObject(request.body) as unknown as PublishRequest, actor);
+          if (actor) {
+            this.audit.record(actor.user.id, 'publish.created', { slug: response.slug });
+          }
+          return this.created(response, 202);
+        }
+
+        if (method === 'PUT' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug)) {
+          const response = this.publishing.update(publishSlug, this.requiredObject(request.body) as unknown as PublishRequest & { claimToken?: unknown }, actor);
+          if (actor) {
+            this.audit.record(actor.user.id, 'publish.updated', { slug: response.slug, versionId: response.upload.versionId });
+          }
+          return this.ok(response);
+        }
+
+        if (method === 'POST' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug, 'finalize')) {
+          const publish = this.publishing.finalize(publishSlug, this.requiredObject(request.body).versionId);
+          if (actor) {
+            this.audit.record(actor.user.id, 'publish.finalized', { slug: publish.slug, versionId: publish.liveVersionId ?? '' });
+          }
+          return this.ok({ publish });
+        }
+
+        if (method === 'POST' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug, 'claim')) {
+          if (!actor) {
+            throw new Error('Authentication is required.');
+          }
+          const publish = this.publishing.claim(publishSlug, this.requiredObject(request.body).claimToken, actor);
+          this.audit.record(actor.user.id, 'publish.claimed', { slug: publish.slug });
+          return this.ok({ publish });
+        }
+      }
+
       const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
       const user = actor.user;
+
+      if (method === 'GET' && this.matches(route, 'api', 'v1', 'publishes')) {
+        return this.ok({ publishes: this.publishing.list(actor) });
+      }
 
       if (method === 'POST' && this.matches(route, 'auth', 'oauth-identities')) {
         const identity = this.auth.linkOAuthIdentity(user.id, this.oauthIdentityInput(request.body));
@@ -849,6 +895,19 @@ export class BackendService {
       project.status = status;
     }
     project.updatedAt = nowIso();
+  }
+
+  private authenticateOptional(request: ApiRequest): AuthActor | undefined {
+    const authorization = request.headers?.authorization ?? request.headers?.Authorization;
+    if (!authorization) {
+      return undefined;
+    }
+
+    return this.auth.authenticate(authorization);
+  }
+
+  private isPublishingRoute(route: RouteMatch): boolean {
+    return route.segments[0] === 'api' && route.segments[1] === 'v1' && route.segments[2] === 'publish';
   }
 
   private parsePath(path: string): RouteMatch {

@@ -150,6 +150,65 @@ export interface Project {
   archivedAt?: string;
 }
 
+export interface PublishFileManifest {
+  path: string;
+  size: number;
+  contentType: string;
+  hash: string;
+}
+
+export interface PublishUploadPlan {
+  path: string;
+  method: 'PUT';
+  url: string;
+  headers: Record<string, string>;
+  expiresInSeconds: number;
+}
+
+export interface PublishVersion {
+  id: string;
+  status: 'pending' | 'live';
+  files: PublishFileManifest[];
+  createdAt: string;
+  finalizedAt?: string;
+}
+
+export interface Publish {
+  slug: string;
+  ownerUserId?: string;
+  claimTokenHash?: string;
+  viewer?: string;
+  spaMode: boolean;
+  ttlSeconds: number;
+  expiresAt?: string;
+  liveVersionId?: string;
+  versions: PublishVersion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublishRequest {
+  files: PublishFileManifest[];
+  ttlSeconds?: number;
+  viewer?: string;
+  spaMode?: boolean;
+}
+
+export interface PublishResponse {
+  slug: string;
+  siteUrl: string;
+  upload: {
+    versionId: string;
+    uploads: PublishUploadPlan[];
+    skipped: PublishFileManifest[];
+  };
+  finalizeUrl: string;
+  expiresInSeconds: number;
+  claimToken?: string;
+  claimUrl?: string;
+  expiresAt?: string;
+}
+
 
 export type AiChangeStatus =
   | 'requested'

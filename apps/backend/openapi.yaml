@@ -8,6 +8,110 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/publish:
+    post:
+      summary: Create an instant publish upload plan
+      description: Accepts a static file manifest, creates a pending version, and returns upload URLs plus finalize and anonymous claim details when unauthenticated.
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishRequest'
+      responses:
+        '202':
+          description: Publish upload plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishResponse'
+  /api/v1/publish/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/PublishSlug'
+    put:
+      summary: Update an existing instant publish
+      description: Requires either an anonymous claimToken in the JSON body or authenticated bearer credentials for the owning account.
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePublishRequest'
+      responses:
+        '200':
+          description: Updated publish upload plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishResponse'
+  /api/v1/publish/{slug}/finalize:
+    parameters:
+      - $ref: '#/components/parameters/PublishSlug'
+    post:
+      summary: Finalize an uploaded publish version
+      description: Marks the uploaded version as live for the publish slug.
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizePublishRequest'
+      responses:
+        '200':
+          description: Publish version is live
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publish:
+                    $ref: '#/components/schemas/Publish'
+  /api/v1/publish/{slug}/claim:
+    parameters:
+      - $ref: '#/components/parameters/PublishSlug'
+    post:
+      summary: Claim an anonymous instant publish
+      description: Transfers ownership of an anonymous site to the authenticated account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimPublishRequest'
+      responses:
+        '200':
+          description: Publish claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publish:
+                    $ref: '#/components/schemas/Publish'
+  /api/v1/publishes:
+    get:
+      summary: List authenticated user instant publishes
+      responses:
+        '200':
+          description: Authenticated user's publishes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publishes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Publish'
   /auth/register:
     post:
       summary: Register a user and create a login session
@@ -731,7 +835,166 @@ components:
       required: true
       schema:
         type: string
+    PublishSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
+    PublishRequest:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PublishFileManifest'
+        ttlSeconds:
+          type: integer
+          minimum: 1
+          description: Optional anonymous expiration window, capped by the service.
+        viewer:
+          type: string
+          description: Optional viewer/runtime hint for the generated site.
+        spaMode:
+          type: boolean
+          description: Enables single-page-app fallback behavior for the publish.
+    UpdatePublishRequest:
+      allOf:
+        - $ref: '#/components/schemas/PublishRequest'
+        - type: object
+          properties:
+            claimToken:
+              type: string
+              description: Required when updating an anonymous publish without bearer authentication.
+    FinalizePublishRequest:
+      type: object
+      required: [versionId]
+      properties:
+        versionId:
+          type: string
+    ClaimPublishRequest:
+      type: object
+      required: [claimToken]
+      properties:
+        claimToken:
+          type: string
+    PublishResponse:
+      type: object
+      properties:
+        slug:
+          type: string
+        siteUrl:
+          type: string
+          format: uri
+        upload:
+          type: object
+          properties:
+            versionId:
+              type: string
+            uploads:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublishUploadPlan'
+            skipped:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublishFileManifest'
+        finalizeUrl:
+          type: string
+          format: uri
+        expiresInSeconds:
+          type: integer
+          description: Present for expiring anonymous publishes.
+        claimToken:
+          type: string
+          description: Anonymous-only token used to update or claim the publish.
+        claimUrl:
+          type: string
+          format: uri
+          description: Anonymous-only URL for transferring ownership to an authenticated account.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Anonymous-only expiration timestamp.
+    PublishFileManifest:
+      type: object
+      required: [path, size, contentType, hash]
+      properties:
+        path:
+          type: string
+        size:
+          type: integer
+          minimum: 0
+        contentType:
+          type: string
+        hash:
+          type: string
+    PublishUploadPlan:
+      type: object
+      properties:
+        path:
+          type: string
+        method:
+          type: string
+          enum: [PUT]
+        url:
+          type: string
+          format: uri
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        expiresInSeconds:
+          type: integer
+    PublishVersion:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, live]
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishFileManifest'
+        createdAt:
+          type: string
+          format: date-time
+        finalizedAt:
+          type: string
+          format: date-time
+    Publish:
+      type: object
+      properties:
+        slug:
+          type: string
+        ownerUserId:
+          type: string
+        viewer:
+          type: string
+        spaMode:
+          type: boolean
+        ttlSeconds:
+          type: integer
+        expiresAt:
+          type: string
+          format: date-time
+        liveVersionId:
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishVersion'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     CreateAiChangeRequest:
       type: object
       required: [prompt]
