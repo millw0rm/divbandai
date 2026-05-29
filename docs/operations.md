@@ -49,6 +49,35 @@ Required metric families:
 - GitLab health: project provisioning duration, runner registration status, runner online status, CI queue duration, job duration, and job failure count.
 - Quota and billing: requested CPU, used CPU, requested memory, used memory, requested storage, used storage, pod count, service count, ingress count, secret count, public egress bytes, build minutes, deployment count, and retained log bytes.
 
+## Instant static hosting operational limits
+
+The backend must centralize product defaults in `apps/backend/src/publishing/limits.ts` and keep public documentation, agent metadata, gateway configuration, and enforcement code aligned with that module.
+
+| Limit family | Anonymous | Free account | Paid tiers |
+| --- | --- | --- | --- |
+| Retention | 24-hour TTL; one-hour fallback during abuse spikes | Permanent while under quota | Permanent while under quota, with longer version history by plan |
+| Upload size | 100 files, 10 MiB max file, 50 MiB total | 1,000 files, 25 MiB max file, 1 GiB pooled storage | Increased storage, file, and version-history caps by plan |
+| Publish rate | 10 publishes per IP per hour | 60 publishes per account per hour | Higher account, team, IP, and API-token limits by plan |
+| Domains | Platform subdomain only | One custom domain | Increased custom domains by plan |
+| Product features | Unguessable slug and claim token only | Permanent sites and limited or no analytics | Password protection, analytics, vanity handles, and higher limits |
+
+Operational requirements:
+
+- Enforce max files, max file bytes, max total upload bytes, default TTL, upload-plan TTL, and rate-limit defaults from the centralized backend constants.
+- Emit structured metrics for accepted publishes, rejected publishes, total bytes, file counts, TTL chosen, source IP, source ASN, authenticated account, and triggering limit.
+- Configure API gateway and application throttles with the same per-IP and per-ASN windows so edge and backend decisions are explainable.
+- Use unguessable anonymous slugs and never route anonymous sites through user-supplied vanity handles or custom domains.
+- Lower anonymous TTL to the configured one-hour abuse fallback when phishing, malware, ASN reputation, report volume, or publish velocity thresholds are exceeded.
+
+## Abuse operations workflow
+
+- Run phishing-pattern checks on HTML before finalization and quarantine suspicious sites instead of serving them publicly.
+- Run malware/hash checks for every uploaded file and block known-bad hashes before issuing upload completion or live-version status.
+- Block dangerous MIME types at manifest validation and again at object ingestion so clients cannot bypass checks by changing declared content type.
+- Expose an abuse-report endpoint that accepts URL, category, reporter contact, and evidence; reports must be acknowledged, deduplicated, and linked to the affected site/version.
+- Takedowns must preserve evidence, disable serving, notify the owner when known, record reviewer decisions, and support reinstatement or permanent deletion according to policy.
+- Alert Trust & Safety when a single IP, account, ASN, domain, hash, or HTML pattern crosses abuse thresholds or triggers repeated shorter-TTL fallbacks.
+
 ## Audit events
 
 Audit events must be immutable, append-only, tenant-scoped, and queryable by actor, target, project ID, tenant ID, request ID, and time range. Store event metadata and before/after summaries, but never store secret values.

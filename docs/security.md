@@ -63,6 +63,36 @@ Required checks by integration:
 
 If the user has no membership, a project-scoped API token targets a different project, or the role lacks the required permission, the API must fail before calling GitLab, Kubernetes, DNS, certificate, deployment, or secret-management services.
 
+## Instant static hosting limits and abuse controls
+
+Instant static hosting is intentionally safe-by-default so agents can publish previews without turning the platform into durable anonymous storage.
+
+### Anonymous publishing tier
+
+- Anonymous publishes expire after 24 hours and cannot request a longer TTL.
+- Each anonymous publish is limited to 100 files, 10 MiB per file, and 50 MiB total uploaded bytes.
+- Anonymous publishing is throttled per source IP to 10 publishes per hour, with stricter fallback limits when abuse signals are present.
+- Slugs must include a cryptographically random, unguessable suffix; caller-supplied vanity slugs are not accepted for anonymous publishes.
+- Anonymous publishes cannot attach custom domains, enable password protection, or access analytics beyond operational logs.
+
+### Account and paid-tier gates
+
+- Free accounts may keep permanent sites while they remain within the free storage cap, site count cap, and custom-domain allowance documented in pricing.
+- Free analytics are disabled or limited to coarse aggregate counters so visitor-level analytics remain a paid feature.
+- Paid tiers may raise storage, site, custom-domain, and publish-rate limits and may unlock password protection, analytics, vanity handles, and organization controls.
+- Tier decisions must be enforced before accepting upload sessions, attaching domains, setting passwords, creating vanity handles, or exposing analytics exports.
+
+### Abuse prevention requirements
+
+- HTML uploads must be scanned for phishing patterns such as credential-collection forms, brand impersonation strings, suspicious external form actions, and obfuscated redirects.
+- Uploaded file hashes must be checked against configured malware, phishing-kit, and known-bad content feeds before finalization.
+- Dangerous executable or active-content MIME types must be blocked for static hosting, including native executables, shell scripts, server-side scripts, browser extensions, and ambiguous binary uploads not needed for static sites.
+- Public pages must link to an abuse-report endpoint, and every report must create a tracked abuse case with reporter contact, URL, reason, evidence, timestamps, and current site owner or source IP metadata.
+- The takedown workflow must support quarantine, owner notification, evidence preservation, reviewer decision, appeal, and permanent deletion after the retention window.
+- Gateways and API handlers must apply both per-IP and per-ASN throttling so botnets and cloud-provider bursts cannot bypass single-IP limits.
+- When abuse thresholds are exceeded but content is not yet confirmed malicious, the platform may fall back to a shorter one-hour TTL, disable custom-domain attachment, or require account verification before accepting more publishes.
+
+
 ## Sessions and API tokens
 
 Session requirements:

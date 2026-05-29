@@ -8,16 +8,15 @@ import type {
   PublishVersion,
 } from '../models';
 import type { BackendStore } from '../store';
+import { PUBLISHING_LIMITS } from '../publishing/limits';
 import { createId, normalizeSlug, nowIso } from '../utils';
-
-const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
-const MAX_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export class PublishingService {
   constructor(private readonly store: BackendStore) {}
 
   async create(input: PublishRequest, actor?: AuthActor): Promise<PublishResponse> {
     const files = this.filesFromInput(input.files);
+    this.requireWithinLimits(files);
     const timestamp = nowIso();
     const slug = this.uniqueSlug(this.slugFromFiles(files));
     const anonymous = !actor || input.anonymous === true;
@@ -47,6 +46,7 @@ export class PublishingService {
     await this.requireWriteAccess(publish, actor, input.claimToken);
     this.requireNotExpired(publish);
     const files = this.filesFromInput(input.files);
+    this.requireWithinLimits(files);
     const previousFiles = this.liveOrLatestVersion(publish)?.files ?? [];
     const skipped = files.filter((file) => previousFiles.some((previous) => previous.path === file.path && previous.hash === file.hash));
     const uploads = files.filter((file) => !skipped.some((skippedFile) => skippedFile.path === file.path));
@@ -155,7 +155,7 @@ export class PublishingService {
         'content-type': file.contentType,
         'x-divband-content-sha256': file.hash,
       },
-      expiresInSeconds: 900,
+      expiresInSeconds: PUBLISHING_LIMITS.uploadPlan.expiresInSeconds,
     }));
   }
 
@@ -194,6 +194,22 @@ export class PublishingService {
       throw new Error('At least one file is required.');
     }
     return files.map((file) => this.fileFromInput(file));
+  }
+
+  private requireWithinLimits(files: PublishFileManifest[]): void {
+    if (files.length > PUBLISHING_LIMITS.anonymous.maxFiles) {
+      throw new Error(`Publish includes too many files. Maximum is ${PUBLISHING_LIMITS.anonymous.maxFiles}.`);
+    }
+
+    const largestFile = Math.max(...files.map((file) => file.size));
+    if (largestFile > PUBLISHING_LIMITS.anonymous.maxFileBytes) {
+      throw new Error(`Publish includes a file larger than ${PUBLISHING_LIMITS.anonymous.maxFileBytes} bytes.`);
+    }
+
+    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalBytes > PUBLISHING_LIMITS.anonymous.maxTotalBytes) {
+      throw new Error(`Publish is larger than ${PUBLISHING_LIMITS.anonymous.maxTotalBytes} bytes.`);
+    }
   }
 
   private fileFromInput(input: unknown): PublishFileManifest {
@@ -237,12 +253,12 @@ export class PublishingService {
 
   private ttlSeconds(value: unknown): number {
     if (typeof value === 'undefined') {
-      return DEFAULT_TTL_SECONDS;
+      return PUBLISHING_LIMITS.anonymous.defaultTtlSeconds;
     }
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
       throw new Error('ttlSeconds must be a positive number.');
     }
-    return Math.min(Math.floor(value), MAX_TTL_SECONDS);
+    return Math.min(Math.floor(value), PUBLISHING_LIMITS.anonymous.maxTtlSeconds);
   }
 
   private expiresAt(ttlSeconds: number): string {
