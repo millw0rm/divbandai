@@ -18,7 +18,7 @@ This backlog converts the current test-coverage and delegated-DNS findings into 
 
 | Task | Priority | Area | Dependencies | Acceptance criteria |
 | --- | --- | --- | --- | --- |
-| Decide delegated-DNS architecture | P0 | Domains/infra | DNS provider evaluation, hosting-domain decision | Product/infra docs record whether Divband will use a managed DNS provider, vanity nameservers, or self-hosted authoritative DNS for delegated customer zones. |
+| Decide delegated-DNS architecture | P0 | Domains/infra | DNS provider evaluation, hosting-domain decision | Architecture decision is recorded in [`docs/domains.md`](domains.md) under **Optional delegated DNS**; downstream delegated-DNS tasks use that managed-provider baseline. |
 | Add delegated-DNS domain model | P1 | Backend/domains | Architecture decision, database persistence | Domain records can represent no-DNS, CNAME/apex, delegated sub-zone, and delegated full-zone modes with nameserver set, delegation status, verification status, and audit fields. |
 | Implement managed DNS provider adapter | P1 | Integrations/domains | Provider credentials, provider SDK/API, secret storage | Backend can create/update/delete customer zones or delegated sub-zones, return assigned nameservers, create `_divband` TXT records, app records, wildcard records, and `_acme-challenge` records through the provider. |
 | Verify parent-zone NS delegation | P1 | Domains/security | DNS verifier job | Verification queries public resolvers and authoritative parent nameservers, confirms the delegated domain points to the expected NS set, detects stale/partial delegation, and exposes actionable dashboard errors. |
