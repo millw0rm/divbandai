@@ -140,6 +140,84 @@ export interface Project {
   archivedAt?: string;
 }
 
+
+export type AiChangeStatus =
+  | 'requested'
+  | 'context_attached'
+  | 'patch_generated'
+  | 'awaiting_confirmation'
+  | 'branch_created'
+  | 'merge_request_opened'
+  | 'ci_running'
+  | 'ci_succeeded'
+  | 'ci_failed'
+  | 'deploy_ready';
+
+export interface AiContextAttachment {
+  id: string;
+  summary: string;
+  files: string[];
+  redactedSecrets: string[];
+  createdAt: string;
+}
+
+export interface AiPatchFile {
+  path: string;
+  action: 'create' | 'update' | 'delete';
+  diff: string;
+}
+
+export interface AiPatchProposal {
+  id: string;
+  summary: string;
+  files: AiPatchFile[];
+  createdAt: string;
+  requiresConfirmation: boolean;
+  confirmedAt?: string;
+  confirmedBy?: string;
+}
+
+export interface AiGitLabBranch {
+  name: string;
+  webUrl: string;
+  commitSha?: string;
+  createdAt: string;
+}
+
+export interface AiGitLabMergeRequest {
+  iid: number;
+  title: string;
+  webUrl: string;
+  sourceBranch: string;
+  targetBranch: string;
+  state: 'opened' | 'merged' | 'closed';
+  createdAt: string;
+}
+
+export interface AiCiStatus {
+  pipelineId: string;
+  status: 'created' | 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  webUrl: string;
+  deploymentReady: boolean;
+  updatedAt: string;
+}
+
+export interface AiChangeRequest {
+  id: string;
+  projectId: string;
+  requesterId: string;
+  prompt: string;
+  status: AiChangeStatus;
+  targetBranch: string;
+  context: AiContextAttachment[];
+  patch?: AiPatchProposal;
+  branch?: AiGitLabBranch;
+  mergeRequest?: AiGitLabMergeRequest;
+  ciStatus?: AiCiStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AuditEvent {
   id: string;
   actorId: string;

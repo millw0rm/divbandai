@@ -1,6 +1,11 @@
 import { can, assignableRoles, type ProjectPermission, type ProjectRole } from '@divband/auth';
 import { createProjectLifecyclePlan, type ProjectStatus } from './project-lifecycle';
 import type {
+  AiChangeRequest,
+  AiCiStatus,
+  AiContextAttachment,
+  AiPatchFile,
+  AiPatchProposal,
   ApiErrorBody,
   ApiRequest,
   ApiResponse,
@@ -187,6 +192,50 @@ export class BackendService {
           return this.ok({ deployments: project.deployments.map(({ id, state, logs }) => ({ id, state, logs })) });
         }
 
+
+        if (method === 'POST' && this.matches(route, 'projects', projectId, 'ai', 'change-requests')) {
+          const { project } = this.requireProject(projectId, actor, 'ai:request_change');
+          return this.created({ changeRequest: this.createAiChangeRequest(project, user, this.requiredObject(request.body)) }, 202);
+        }
+
+        if (method === 'GET' && this.matches(route, 'projects', projectId, 'ai', 'change-requests')) {
+          const { project } = this.requireProject(projectId, actor, 'project:read');
+          return this.ok({ changeRequests: this.listAiChangeRequests(project) });
+        }
+
+        if (route.segments[2] === 'ai' && route.segments[3] === 'change-requests' && route.segments[4]) {
+          const changeRequestId = route.segments[4];
+          const { project } = this.requireProject(projectId, actor, 'ai:request_change');
+
+          if (method === 'GET' && route.segments.length === 5) {
+            return this.ok({ changeRequest: this.requireAiChangeRequest(project, changeRequestId) });
+          }
+
+          if (method === 'POST' && route.segments[5] === 'context') {
+            return this.ok({ changeRequest: this.attachAiProjectContext(project, user, changeRequestId, this.requiredObject(request.body)) });
+          }
+
+          if (method === 'POST' && route.segments[5] === 'patch') {
+            return this.ok({ changeRequest: this.generateAiPatch(project, user, changeRequestId, this.optionalObject(request.body)) });
+          }
+
+          if (method === 'POST' && route.segments[5] === 'branch') {
+            return this.created({ changeRequest: await this.createAiGitLabBranch(project, user, changeRequestId, this.requiredObject(request.body)) }, 202);
+          }
+
+          if (method === 'POST' && route.segments[5] === 'merge-request') {
+            return this.created({ changeRequest: await this.openAiGitLabMergeRequest(project, user, changeRequestId) }, 202);
+          }
+
+          if (method === 'POST' && route.segments[5] === 'ci') {
+            return this.created({ changeRequest: await this.triggerAiCi(project, user, changeRequestId) }, 202);
+          }
+
+          if (method === 'PUT' && route.segments[5] === 'status') {
+            return this.ok({ changeRequest: this.reportAiBuildDeployStatus(project, user, changeRequestId, this.requiredObject(request.body)) });
+          }
+        }
+
         if (method === 'GET' && this.matches(route, 'projects', projectId, 'environment-variables')) {
           const { project } = this.requireProject(projectId, actor, 'secret:read');
           return this.ok({ environmentVariables: project.environmentVariables.map((variable) => ({ ...variable, value: maskSecret(variable.value) })) });
@@ -341,6 +390,201 @@ export class BackendService {
     this.touch(project, 'building');
     this.audit.record(user.id, 'project.deployment_triggered', { deploymentId: deployment.id, gitRef }, project.id);
     return deployment;
+  }
+
+
+  private createAiChangeRequest(project: Project, user: User, body: Record<string, unknown>): AiChangeRequest {
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+    if (!prompt) {
+      throw new Error('AI change request prompt is required.');
+    }
+
+    const targetBranch = typeof body.targetBranch === 'string' && body.targetBranch.trim() ? body.targetBranch.trim() : 'main';
+    const timestamp = nowIso();
+    const changeRequest: AiChangeRequest = {
+      id: createId('ai_change'),
+      projectId: project.id,
+      requesterId: user.id,
+      prompt: this.redactSecrets(prompt),
+      status: 'requested',
+      targetBranch,
+      context: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    this.store.aiChangeRequests.set(changeRequest.id, changeRequest);
+    this.audit.record(user.id, 'ai.change_request_created', { changeRequestId: changeRequest.id, targetBranch }, project.id);
+    return changeRequest;
+  }
+
+  private listAiChangeRequests(project: Project): AiChangeRequest[] {
+    return [...this.store.aiChangeRequests.values()].filter((request) => request.projectId === project.id);
+  }
+
+  private attachAiProjectContext(project: Project, user: User, changeRequestId: string, body: Record<string, unknown>): AiChangeRequest {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    const requestedFiles = Array.isArray(body.files) ? body.files.filter((file): file is string => typeof file === 'string') : [];
+    const files = requestedFiles.map((file) => this.projectScopedPath(project, file));
+    const attachment: AiContextAttachment = {
+      id: createId('ai_context'),
+      summary: this.redactSecrets(typeof body.summary === 'string' ? body.summary : `Context for ${project.slug}`),
+      files,
+      redactedSecrets: this.redactedSecretNames(project),
+      createdAt: nowIso(),
+    };
+
+    changeRequest.context.push(attachment);
+    this.touchAiChangeRequest(changeRequest, 'context_attached');
+    this.audit.record(user.id, 'ai.context_attached', { changeRequestId, files: files.length, redactedSecrets: attachment.redactedSecrets.length }, project.id);
+    return changeRequest;
+  }
+
+  private generateAiPatch(project: Project, user: User, changeRequestId: string, body: Record<string, unknown>): AiChangeRequest {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    if (changeRequest.context.length === 0) {
+      throw new Error('Attach project context before generating a patch.');
+    }
+
+    const rawFiles = Array.isArray(body.files) ? body.files : [];
+    const files = rawFiles.length ? rawFiles.map((file) => this.aiPatchFileFromInput(project, file)) : [
+      {
+        path: this.projectScopedPath(project, 'README.md'),
+        action: 'update' as const,
+        diff: `AI proposal for: ${changeRequest.prompt}`,
+      },
+    ];
+    const patch: AiPatchProposal = {
+      id: createId('ai_patch'),
+      summary: this.redactSecrets(typeof body.summary === 'string' ? body.summary : `Proposed changes for: ${changeRequest.prompt}`),
+      files,
+      createdAt: nowIso(),
+      requiresConfirmation: true,
+    };
+
+    changeRequest.patch = patch;
+    this.touchAiChangeRequest(changeRequest, 'awaiting_confirmation');
+    this.audit.record(user.id, 'ai.patch_generated', { changeRequestId, files: files.length, requiresConfirmation: true }, project.id);
+    return changeRequest;
+  }
+
+  private async createAiGitLabBranch(project: Project, user: User, changeRequestId: string, body: Record<string, unknown>): Promise<AiChangeRequest> {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    if (!changeRequest.patch) {
+      throw new Error('Generate a patch before creating a branch.');
+    }
+    if (body.confirmApply !== true) {
+      throw new Error('User confirmation is required before applying generated changes.');
+    }
+
+    changeRequest.patch.confirmedAt = nowIso();
+    changeRequest.patch.confirmedBy = user.id;
+    const branch = await this.gitlab.createBranch(project, changeRequest, changeRequest.patch);
+    changeRequest.branch = { ...branch, createdAt: nowIso() };
+    this.touchAiChangeRequest(changeRequest, 'branch_created');
+    this.audit.record(user.id, 'ai.branch_created', { changeRequestId, branch: branch.name, commitSha: branch.commitSha }, project.id);
+    return changeRequest;
+  }
+
+  private async openAiGitLabMergeRequest(project: Project, user: User, changeRequestId: string): Promise<AiChangeRequest> {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    if (!changeRequest.branch) {
+      throw new Error('Create a GitLab branch before opening a merge request.');
+    }
+
+    const mergeRequest = await this.gitlab.openMergeRequest(project, changeRequest);
+    changeRequest.mergeRequest = { ...mergeRequest, createdAt: nowIso() };
+    this.touchAiChangeRequest(changeRequest, 'merge_request_opened');
+    this.audit.record(user.id, 'ai.merge_request_opened', { changeRequestId, mergeRequest: mergeRequest.webUrl }, project.id);
+    return changeRequest;
+  }
+
+  private async triggerAiCi(project: Project, user: User, changeRequestId: string): Promise<AiChangeRequest> {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    if (!changeRequest.mergeRequest) {
+      throw new Error('Open a merge request before triggering CI.');
+    }
+
+    const pipeline = await this.gitlab.triggerPipeline(project, changeRequest.branch?.name ?? changeRequest.mergeRequest.sourceBranch);
+    changeRequest.ciStatus = { ...pipeline, deploymentReady: false, updatedAt: nowIso() };
+    this.touchAiChangeRequest(changeRequest, 'ci_running');
+    this.audit.record(user.id, 'ai.ci_triggered', { changeRequestId, pipelineId: pipeline.pipelineId }, project.id);
+    return changeRequest;
+  }
+
+  private reportAiBuildDeployStatus(project: Project, user: User, changeRequestId: string, body: Record<string, unknown>): AiChangeRequest {
+    const changeRequest = this.requireAiChangeRequest(project, changeRequestId);
+    if (!changeRequest.ciStatus) {
+      throw new Error('Trigger CI before reporting build or deploy readiness.');
+    }
+
+    const status = typeof body.status === 'string' ? body.status : changeRequest.ciStatus.status;
+    if (!this.isAiCiState(status)) {
+      throw new Error('Invalid CI status.');
+    }
+
+    const deploymentReady = status === 'success' && body.deploymentReady === true;
+    const ciStatus: AiCiStatus = {
+      pipelineId: typeof body.pipelineId === 'string' ? body.pipelineId : changeRequest.ciStatus?.pipelineId ?? createId('pipeline'),
+      status,
+      webUrl: typeof body.webUrl === 'string' ? body.webUrl : changeRequest.ciStatus?.webUrl ?? '',
+      deploymentReady,
+      updatedAt: nowIso(),
+    };
+    changeRequest.ciStatus = ciStatus;
+    this.touchAiChangeRequest(changeRequest, status === 'success' ? (deploymentReady ? 'deploy_ready' : 'ci_succeeded') : status === 'failed' ? 'ci_failed' : 'ci_running');
+    this.audit.record(user.id, 'ai.status_reported', { changeRequestId, status, deploymentReady }, project.id);
+    return changeRequest;
+  }
+
+  private requireAiChangeRequest(project: Project, changeRequestId: string): AiChangeRequest {
+    const changeRequest = this.store.aiChangeRequests.get(changeRequestId);
+    if (!changeRequest || changeRequest.projectId !== project.id) {
+      throw new Error('AI change request not found.');
+    }
+    return changeRequest;
+  }
+
+  private aiPatchFileFromInput(project: Project, input: unknown): AiPatchFile {
+    if (!this.isRecord(input) || typeof input.path !== 'string' || typeof input.diff !== 'string') {
+      throw new Error('Each patch file requires path and diff.');
+    }
+    const action = typeof input.action === 'string' ? input.action : 'update';
+    if (action !== 'create' && action !== 'update' && action !== 'delete') {
+      throw new Error('Patch file action must be create, update, or delete.');
+    }
+    return {
+      path: this.projectScopedPath(project, input.path),
+      action,
+      diff: this.redactSecrets(input.diff),
+    };
+  }
+
+  private projectScopedPath(project: Project, filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!normalized || normalized.includes('..') || normalized.startsWith('.git/')) {
+      throw new Error('AI context and patches must use project-scoped file paths.');
+    }
+    return `${project.slug}/${normalized}`;
+  }
+
+  private redactSecrets(value: string): string {
+    return value
+      .replace(/(token|secret|password|api[_-]?key)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
+      .replace(/glpat-[A-Za-z0-9_-]+/g, '[REDACTED_GITLAB_TOKEN]');
+  }
+
+  private redactedSecretNames(project: Project): string[] {
+    return project.environmentVariables.filter((variable) => variable.protected).map((variable) => variable.key);
+  }
+
+  private touchAiChangeRequest(changeRequest: AiChangeRequest, status: AiChangeRequest['status']): void {
+    changeRequest.status = status;
+    changeRequest.updatedAt = nowIso();
+  }
+
+  private isAiCiState(status: string): status is AiCiStatus['status'] {
+    return status === 'created' || status === 'pending' || status === 'running' || status === 'success' || status === 'failed' || status === 'canceled';
   }
 
   private upsertEnvironmentVariables(project: Project, user: User, body: Record<string, unknown>): EnvironmentVariable[] {

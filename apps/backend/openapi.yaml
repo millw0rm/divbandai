@@ -472,6 +472,177 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/EnvironmentVariable'
+  /projects/{projectId}/ai/change-requests:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      summary: List AI change requests for a project
+      responses:
+        '200':
+          description: AI change requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AiChangeRequest'
+    post:
+      summary: Create an AI change request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAiChangeRequest'
+      responses:
+        '202':
+          description: AI change request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    get:
+      summary: Get an AI change request
+      responses:
+        '200':
+          description: AI change request detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/context:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    post:
+      summary: Attach redacted project context to an AI change request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachAiContextRequest'
+      responses:
+        '200':
+          description: Context attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/patch:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    post:
+      summary: Generate a patch proposal for a confirmed project context
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateAiPatchRequest'
+      responses:
+        '200':
+          description: Patch generated and waiting for user confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/branch:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    post:
+      summary: Create a GitLab branch after user confirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAiBranchRequest'
+      responses:
+        '202':
+          description: Branch and commit created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/merge-request:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    post:
+      summary: Open a GitLab merge request for AI-generated changes
+      responses:
+        '202':
+          description: Merge request opened
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/ci:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    post:
+      summary: Trigger CI for the AI merge request branch
+      responses:
+        '202':
+          description: CI pipeline triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
+  /projects/{projectId}/ai/change-requests/{changeRequestId}/status:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ChangeRequestId'
+    put:
+      summary: Report AI build and deployment readiness status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportAiStatusRequest'
+      responses:
+        '200':
+          description: Build/deploy status recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changeRequest:
+                    $ref: '#/components/schemas/AiChangeRequest'
 components:
   securitySchemes:
     bearerAuth:
@@ -484,7 +655,196 @@ components:
       required: true
       schema:
         type: string
+    ChangeRequestId:
+      name: changeRequestId
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
+    CreateAiChangeRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        targetBranch:
+          type: string
+          default: main
+    AttachAiContextRequest:
+      type: object
+      properties:
+        summary:
+          type: string
+        files:
+          type: array
+          description: Project-scoped paths; parent traversal and .git paths are rejected.
+          items:
+            type: string
+    GenerateAiPatchRequest:
+      type: object
+      properties:
+        summary:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiPatchFile'
+    CreateAiBranchRequest:
+      type: object
+      required: [confirmApply]
+      properties:
+        confirmApply:
+          type: boolean
+          description: Must be true to acknowledge the generated patch before branch creation.
+    ReportAiStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        pipelineId:
+          type: string
+        status:
+          $ref: '#/components/schemas/AiCiPipelineState'
+        webUrl:
+          type: string
+        deploymentReady:
+          type: boolean
+          description: True only after CI has succeeded and deployment gates pass.
+    AiChangeStatus:
+      type: string
+      enum: [requested, context_attached, patch_generated, awaiting_confirmation, branch_created, merge_request_opened, ci_running, ci_succeeded, ci_failed, deploy_ready]
+    AiCiPipelineState:
+      type: string
+      enum: [created, pending, running, success, failed, canceled]
+    AiChangeRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        requesterId:
+          type: string
+        prompt:
+          type: string
+          description: Stored with secret-looking values redacted.
+        status:
+          $ref: '#/components/schemas/AiChangeStatus'
+        targetBranch:
+          type: string
+        context:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiContextAttachment'
+        patch:
+          $ref: '#/components/schemas/AiPatchProposal'
+        branch:
+          $ref: '#/components/schemas/AiGitLabBranch'
+        mergeRequest:
+          $ref: '#/components/schemas/AiGitLabMergeRequest'
+        ciStatus:
+          $ref: '#/components/schemas/AiCiStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AiContextAttachment:
+      type: object
+      properties:
+        id:
+          type: string
+        summary:
+          type: string
+        files:
+          type: array
+          items:
+            type: string
+        redactedSecrets:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+    AiPatchProposal:
+      type: object
+      properties:
+        id:
+          type: string
+        summary:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/AiPatchFile'
+        createdAt:
+          type: string
+          format: date-time
+        requiresConfirmation:
+          type: boolean
+        confirmedAt:
+          type: string
+          format: date-time
+        confirmedBy:
+          type: string
+    AiPatchFile:
+      type: object
+      required: [path, action, diff]
+      properties:
+        path:
+          type: string
+        action:
+          type: string
+          enum: [create, update, delete]
+        diff:
+          type: string
+    AiGitLabBranch:
+      type: object
+      properties:
+        name:
+          type: string
+        webUrl:
+          type: string
+        commitSha:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AiGitLabMergeRequest:
+      type: object
+      properties:
+        iid:
+          type: integer
+        title:
+          type: string
+        webUrl:
+          type: string
+        sourceBranch:
+          type: string
+        targetBranch:
+          type: string
+        state:
+          type: string
+          enum: [opened, merged, closed]
+        createdAt:
+          type: string
+          format: date-time
+    AiCiStatus:
+      type: object
+      properties:
+        pipelineId:
+          type: string
+        status:
+          $ref: '#/components/schemas/AiCiPipelineState'
+        webUrl:
+          type: string
+        deploymentReady:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
     RegisterRequest:
       type: object
       required: [email, name, password]

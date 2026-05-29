@@ -1,5 +1,5 @@
 export { BackendService, backendService, handleApiRequest } from './backend-service';
-export type { ApiRequest, ApiResponse, Project, ProjectDomain, Deployment, EnvironmentVariable, User } from './models';
+export type { ApiRequest, ApiResponse, Project, ProjectDomain, Deployment, EnvironmentVariable, User, AiChangeRequest, AiPatchProposal, AiCiStatus } from './models';
 export { createBackendStore, defaultStore } from './store';
 export { createProjectLifecyclePlan } from './project-lifecycle';
 export type { ProjectLifecyclePlan, ProjectStatus } from './project-lifecycle';

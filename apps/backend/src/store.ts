@@ -1,5 +1,6 @@
 import type {
   ApiToken,
+  AiChangeRequest,
   AuditEvent,
   AuthSession,
   GitLabIdentityLink,
@@ -24,6 +25,7 @@ export interface BackendStore {
   oauthIdentities: Map<string, OAuthIdentity>;
   gitlabIdentityLinks: Map<string, GitLabIdentityLink>;
   auditEvents: AuditEvent[];
+  aiChangeRequests: Map<string, AiChangeRequest>;
 }
 
 export function createBackendStore(): BackendStore {
@@ -40,6 +42,7 @@ export function createBackendStore(): BackendStore {
     oauthIdentities: new Map(),
     gitlabIdentityLinks: new Map(),
     auditEvents: [],
+    aiChangeRequests: new Map(),
   };
 }
 

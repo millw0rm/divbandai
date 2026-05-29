@@ -123,6 +123,7 @@ export interface DashboardState {
   logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>;
   environmentVariables: EnvironmentVariable[];
   assistantMessages: AssistantMessage[];
+  aiChangeRequests: AiChangeRequest[];
   loading: boolean;
   error?: string;
 }
@@ -134,7 +135,35 @@ export interface AssistantMessage {
   createdAt: string;
 }
 
-export interface AssistantChangeRequest {
+export type AiChangeStatus =
+  | 'requested'
+  | 'context_attached'
+  | 'patch_generated'
+  | 'awaiting_confirmation'
+  | 'branch_created'
+  | 'merge_request_opened'
+  | 'ci_running'
+  | 'ci_succeeded'
+  | 'ci_failed'
+  | 'deploy_ready';
+
+export interface AiChangeRequest {
+  id: string;
+  projectId: string;
+  requesterId: string;
+  prompt: string;
+  status: AiChangeStatus;
+  targetBranch: string;
+  context: Array<{ id: string; summary: string; files: string[]; redactedSecrets: string[]; createdAt: string }>;
+  patch?: { id: string; summary: string; requiresConfirmation: boolean; confirmedAt?: string; files: Array<{ path: string; action: 'create' | 'update' | 'delete'; diff: string }> };
+  branch?: { name: string; webUrl: string; commitSha?: string; createdAt: string };
+  mergeRequest?: { iid: number; title: string; webUrl: string; sourceBranch: string; targetBranch: string; state: 'opened' | 'merged' | 'closed'; createdAt: string };
+  ciStatus?: { pipelineId: string; status: 'created' | 'pending' | 'running' | 'success' | 'failed' | 'canceled'; webUrl: string; deploymentReady: boolean; updatedAt: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantChangeRequestInput {
   prompt: string;
   projectId: string;
   targetBranch?: string;
@@ -399,12 +428,75 @@ export class DivbandApiClient {
     return response.environmentVariables;
   }
 
-  async requestAssistantChange(input: AssistantChangeRequest): Promise<AssistantMessage> {
-    const response = await this.request<{ message: AssistantMessage }>(
-      `/projects/${encodeURIComponent(input.projectId)}/assistant/requests`,
+  async createAiChangeRequest(input: AssistantChangeRequestInput): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(input.projectId)}/ai/change-requests`,
       { method: 'POST', body: { prompt: input.prompt, targetBranch: input.targetBranch } },
     );
-    return response.message;
+    return response.changeRequest;
+  }
+
+  async listAiChangeRequests(projectId: string): Promise<AiChangeRequest[]> {
+    const response = await this.request<{ changeRequests: AiChangeRequest[] }>(`/projects/${encodeURIComponent(projectId)}/ai/change-requests`);
+    return response.changeRequests;
+  }
+
+  async attachAiContext(projectId: string, changeRequestId: string, input: { summary: string; files: string[] }): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/context`,
+      { method: 'POST', body: input },
+    );
+    return response.changeRequest;
+  }
+
+  async generateAiPatch(projectId: string, changeRequestId: string): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/patch`,
+      { method: 'POST', body: {} },
+    );
+    return response.changeRequest;
+  }
+
+  async createAiBranch(projectId: string, changeRequestId: string, confirmApply: boolean): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/branch`,
+      { method: 'POST', body: { confirmApply } },
+    );
+    return response.changeRequest;
+  }
+
+  async openAiMergeRequest(projectId: string, changeRequestId: string): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/merge-request`,
+      { method: 'POST' },
+    );
+    return response.changeRequest;
+  }
+
+  async triggerAiCi(projectId: string, changeRequestId: string): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/ci`,
+      { method: 'POST' },
+    );
+    return response.changeRequest;
+  }
+
+  async reportAiStatus(projectId: string, changeRequestId: string, input: { status: string; deploymentReady?: boolean }): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/status`,
+      { method: 'PUT', body: input },
+    );
+    return response.changeRequest;
+  }
+
+  async requestAssistantChange(input: AssistantChangeRequestInput): Promise<AssistantMessage> {
+    const changeRequest = await this.createAiChangeRequest(input);
+    return {
+      id: changeRequest.id,
+      role: 'assistant',
+      content: `Created AI change request ${changeRequest.id}. Attach context, generate a patch, confirm the branch, and review the merge request before deployment.`,
+      createdAt: changeRequest.createdAt,
+    };
   }
 
   private async request<T>(path: string, options: { method?: string; body?: unknown; authenticated?: boolean } = {}): Promise<T> {
@@ -439,6 +531,7 @@ export function createInitialDashboardState(overrides: Partial<DashboardState> =
     logs: [],
     environmentVariables: [],
     assistantMessages: [],
+    aiChangeRequests: [],
     loading: false,
     ...overrides,
   };
@@ -506,7 +599,7 @@ function renderCurrentPage(state: DashboardState, selectedProject?: Project): st
     case 'logs-build-history':
       return renderLogsPage(state.logs);
     case 'ai-assistant':
-      return renderAssistantPage(selectedProject, state.assistantMessages);
+      return renderAssistantPage(selectedProject, state.assistantMessages, state.aiChangeRequests);
     case 'project-list':
     default:
       return renderProjectListPage(state.projects, selectedProject?.id);
@@ -709,7 +802,7 @@ function renderLogsPage(logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>):
     </article>`;
 }
 
-function renderAssistantPage(project: Project | undefined, messages: AssistantMessage[]): string {
+function renderAssistantPage(project: Project | undefined, messages: AssistantMessage[], changeRequests: AiChangeRequest[]): string {
   if (!project) {
     return renderEmptyProjectNotice();
   }
@@ -717,17 +810,48 @@ function renderAssistantPage(project: Project | undefined, messages: AssistantMe
   const transcript = messages.length
     ? messages.map((message) => `<li class="message message-${message.role}"><strong>${message.role}</strong><p>${escapeHtml(message.content)}</p></li>`).join('')
     : '<li>Ask for a feature, content edit, configuration change, or deployment investigation.</li>';
+  const requests = changeRequests.length
+    ? changeRequests.map((request) => `
+      <li class="ai-change-request">
+        <header><strong>${escapeHtml(request.prompt)}</strong><span class="status">${escapeHtml(request.status)}</span></header>
+        <p>Target: <code>${escapeHtml(request.targetBranch)}</code></p>
+        ${request.patch ? `<p>Patch: ${escapeHtml(request.patch.summary)} (${request.patch.files.length} files)</p>` : '<p>No patch generated yet.</p>'}
+        ${request.branch ? `<p>Branch: <a href="${escapeHtml(request.branch.webUrl)}">${escapeHtml(request.branch.name)}</a></p>` : ''}
+        ${request.mergeRequest ? `<p>Merge request: <a href="${escapeHtml(request.mergeRequest.webUrl)}">!${request.mergeRequest.iid}</a></p>` : ''}
+        ${request.ciStatus ? `<p>CI: ${escapeHtml(request.ciStatus.status)}${request.ciStatus.deploymentReady ? ' · deployment ready' : ''}</p>` : ''}
+        <div class="assistant-actions">
+          <button data-action="ai-attach-context" data-project-id="${escapeHtml(project.id)}" data-change-request-id="${escapeHtml(request.id)}">Attach context</button>
+          <button data-action="ai-generate-patch" data-project-id="${escapeHtml(project.id)}" data-change-request-id="${escapeHtml(request.id)}">Generate patch</button>
+          <button data-action="ai-create-branch" data-project-id="${escapeHtml(project.id)}" data-change-request-id="${escapeHtml(request.id)}" data-confirm-apply="true">Confirm and create branch</button>
+          <button data-action="ai-open-merge-request" data-project-id="${escapeHtml(project.id)}" data-change-request-id="${escapeHtml(request.id)}">Open MR</button>
+          <button data-action="ai-trigger-ci" data-project-id="${escapeHtml(project.id)}" data-change-request-id="${escapeHtml(request.id)}">Trigger CI</button>
+        </div>
+      </li>`).join('')
+    : '<li>No AI change requests yet.</li>';
 
   return `
     <article class="card assistant-card">
       <h2>AI assistant</h2>
-      <p>Creates reviewed change requests for <strong>${escapeHtml(project.name)}</strong>.</p>
+      <p>Creates reviewed change requests for <strong>${escapeHtml(project.name)}</strong>. Generated work stays project-scoped and must be confirmed before branch creation.</p>
       <ul class="assistant-transcript">${transcript}</ul>
       <form data-action="assistant-request" data-project-id="${escapeHtml(project.id)}">
         <label>Request <textarea name="prompt" placeholder="Add pricing cards to the landing page" required></textarea></label>
         <label>Target branch <input name="targetBranch" value="main"></label>
-        <button type="submit">Send request</button>
+        <button type="submit">Create AI change request</button>
       </form>
+      <section class="assistant-safety">
+        <h3>Safety controls</h3>
+        <ul>
+          <li>User confirmation is required before applying generated changes.</li>
+          <li>Changes open a GitLab merge request instead of pushing to production.</li>
+          <li>CI must succeed before deployment can be marked ready.</li>
+          <li>Secrets are redacted and file paths are constrained to this project.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Change requests</h3>
+        <ul class="assistant-change-requests">${requests}</ul>
+      </section>
     </article>`;
 }
 
