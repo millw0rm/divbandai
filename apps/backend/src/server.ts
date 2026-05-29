@@ -3,16 +3,13 @@ import process from 'node:process';
 import { URL } from 'node:url';
 import { BackendService } from './backend-service.ts';
 import { loadBackendConfig } from './config.ts';
-import { InMemoryObjectStorage } from './services/object-storage.ts';
+import { createObjectStorage } from './services/object-storage.ts';
 import { createRuntimeStore } from './runtime-store.ts';
 import type { ApiRequest, ApiResponse } from './models.ts';
 
 const config = loadBackendConfig();
 const runtimeStore = await createRuntimeStore(config.databaseUrl);
-const objectStorage = new InMemoryObjectStorage({
-  ...config.objectStorage,
-  uploadBaseUrl: `https://${config.uploadDomain}`,
-});
+const objectStorage = createObjectStorage(config.objectStorage, `https://${config.uploadDomain}`);
 const backend = new BackendService(runtimeStore.store, {
   apiBaseUrl: config.apiBaseUrl,
   publicSiteDomain: config.publicSiteDomain,
@@ -50,7 +47,9 @@ server.listen(config.port, () => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     server.close(() => {
-      process.exitCode = 0;
+      void runtimeStore.close().finally(() => {
+        process.exitCode = 0;
+      });
     });
   });
 }

@@ -3,7 +3,7 @@ export type { ApiRequest, ApiResponse, Project, ProjectDomain, Deployment, Envir
 export { createBackendStore, defaultStore, hydrateBackendStore, snapshotBackendStore } from './store.ts';
 export type { BackendStore, BackendStoreSnapshot, PersistenceAdapter } from './store.ts';
 export { loadBackendConfig } from './config.ts';
-export type { BackendRuntimeConfig, KubernetesConfigMode, ObjectStorageConfig } from './config.ts';
+export type { BackendRuntimeConfig, KubernetesConfigMode, ObjectStorageConfig, ObjectStorageProvider } from './config.ts';
 export { createRuntimeStore } from './runtime-store.ts';
 export { createProjectLifecyclePlan } from './project-lifecycle.ts';
 export type { ProjectLifecyclePlan, ProjectStatus } from './project-lifecycle.ts';
@@ -15,7 +15,7 @@ export { GitLabService } from './services/gitlab.ts';
 export { KubernetesService } from './services/kubernetes.ts';
 export { StaticServingService } from './services/static-serving.ts';
 export { PublishExpiryService } from './services/publish-expiry.ts';
-export { InMemoryObjectStorage } from './services/object-storage.ts';
+export { createObjectStorage, InMemoryObjectStorage, S3ObjectStorage } from './services/object-storage.ts';
 export type { StaticServeRequest, StaticServeResolution, StaticServingOptions } from './services/static-serving.ts';
 export type { PublishExpiryCleanupResult } from './services/publish-expiry.ts';
-export type { ObjectStorage, ObjectStorageOptions, StoredObjectMetadata } from './services/object-storage.ts';
+export type { ObjectStorage, ObjectStorageOptions, S3ObjectStorageOptions, StoredObjectMetadata } from './services/object-storage.ts';

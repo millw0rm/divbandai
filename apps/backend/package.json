@@ -13,5 +13,8 @@
     "dev": "node --experimental-transform-types src/server.ts",
     "build": "tsc --noEmit --project ../../tsconfig.json",
     "start": "node --experimental-transform-types src/server.ts"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }

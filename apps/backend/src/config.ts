@@ -1,6 +1,9 @@
 export type KubernetesConfigMode = 'disabled' | 'in_cluster' | 'kubeconfig';
 
+export type ObjectStorageProvider = 'auto' | 'memory' | 's3';
+
 export interface ObjectStorageConfig {
+  provider: ObjectStorageProvider;
   endpoint?: string;
   region?: string;
   bucket: string;
@@ -35,6 +38,7 @@ export function loadBackendConfig(env: Record<string, string | undefined> = proc
     gitLabUrl: env.GITLAB_URL?.trim() || 'https://gitlab.com',
     kubernetesConfigMode: kubernetesMode(env.KUBERNETES_CONFIG_MODE ?? env.KUBERNETES_MODE),
     objectStorage: {
+      provider: objectStorageProvider(env.OBJECT_STORAGE_PROVIDER),
       endpoint: emptyToUndefined(env.OBJECT_STORAGE_ENDPOINT),
       region: emptyToUndefined(env.OBJECT_STORAGE_REGION),
       bucket: required(env.OBJECT_STORAGE_BUCKET, 'OBJECT_STORAGE_BUCKET'),
@@ -68,6 +72,13 @@ function boolean(value: string | undefined, fallback: boolean): boolean {
     return fallback;
   }
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function objectStorageProvider(value: string | undefined): ObjectStorageProvider {
+  if (value === 'memory' || value === 's3' || value === 'auto') {
+    return value;
+  }
+  return 'auto';
 }
 
 function kubernetesMode(value: string | undefined): KubernetesConfigMode {

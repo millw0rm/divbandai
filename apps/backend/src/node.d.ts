@@ -54,9 +54,20 @@ declare module 'node:path' {
 declare module 'node:url' {
   export class URL {
     constructor(input: string, base?: string);
+    host: string;
+    hostname: string;
     pathname: string;
     search: string;
+    searchParams: URLSearchParams;
+    toString(): string;
   }
+}
+
+declare class URLSearchParams {
+  constructor(init?: Record<string, string>);
+  entries(): IterableIterator<[string, string]>;
+  set(name: string, value: string): void;
+  toString(): string;
 }
 
 declare module 'node:sqlite' {
@@ -93,8 +104,9 @@ declare module 'node:crypto' {
     update(data: string): { digest(encoding: 'hex'): string };
     digest(encoding: 'hex'): string;
   };
-  export function createHmac(algorithm: 'sha256', key: string): {
-    update(data: string): { digest(encoding: 'hex'): string };
+  export function createHmac(algorithm: 'sha256', key: string | Uint8Array): {
+    update(data: string): { digest(): Uint8Array; digest(encoding: 'hex'): string };
+    digest(): Uint8Array;
     digest(encoding: 'hex'): string;
   };
   export function createCipheriv(algorithm: 'aes-256-gcm', key: Uint8Array, iv: Uint8Array): {
@@ -107,4 +119,16 @@ declare module 'node:crypto' {
     update(data: Uint8Array): Uint8Array;
     final(): Uint8Array;
   };
+}
+
+
+declare module 'pg' {
+  export class Pool {
+    constructor(options: { connectionString: string });
+    query<T = Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: T[] }>;
+    end(): Promise<void>;
+  }
+
+  const pg: { Pool: typeof Pool };
+  export default pg;
 }
