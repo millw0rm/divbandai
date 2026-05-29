@@ -171,15 +171,42 @@ export interface AbuseAction {
   createdAt: string;
 }
 
+export type DomainDnsMode = 'none' | 'custom_cname' | 'apex' | 'delegated_sub_zone' | 'delegated_full_zone';
+export type DomainStatus = 'pending_dns' | 'verified' | 'provisioning' | 'active' | 'failed' | 'disabled' | 'removing';
+export type DomainVerificationStatus = 'pending' | 'verified' | 'failed';
+export type DomainDelegationStatus = 'not_applicable' | 'pending' | 'verified' | 'failed';
+
+export interface DomainDnsInstruction {
+  type: 'TXT' | 'CNAME' | 'A' | 'AAAA' | 'ALIAS' | 'ANAME' | 'NS';
+  name: string;
+  value: string | string[];
+  purpose: 'ownership_verification' | 'traffic_routing' | 'zone_delegation';
+  required: boolean;
+}
+
 export interface ProjectDomain {
   id: string;
   hostname: string;
+  dnsMode: DomainDnsMode;
+  status: DomainStatus;
+  verificationStatus: DomainVerificationStatus;
   verificationToken: string;
+  verificationName: string;
+  verificationValue: string;
   verificationRecord: string;
   verified: boolean;
+  dnsTarget?: string | string[];
+  assignedNameservers: string[];
+  delegationStatus: DomainDelegationStatus;
+  providerZoneId?: string;
+  dnsInstructions: DomainDnsInstruction[];
   certificateStatus: CertificateState;
   createdAt: string;
+  updatedAt: string;
+  lastCheckedAt?: string;
   verifiedAt?: string;
+  disabledAt?: string;
+  failureReason?: string;
 }
 
 export type CertificateState = 'not_requested' | 'pending' | 'issued' | 'failed';

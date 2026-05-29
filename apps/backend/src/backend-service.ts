@@ -15,6 +15,9 @@ import type {
   AuthSession,
   Deployment,
   DeploymentState,
+  DomainDnsInstruction,
+  DomainDnsMode,
+  DomainDelegationStatus,
   EnvironmentVariable,
   GitLabIdentityLink,
   OAuthIdentity,
@@ -708,36 +711,131 @@ export class BackendService {
       throw new Error('A valid hostname is required.');
     }
 
+    const dnsMode = this.parseDomainDnsMode(body, hostname);
     const challenge = this.dns.createChallenge(hostname);
+    const timestamp = nowIso();
+    const assignedNameservers = this.assignedNameservers(dnsMode);
+    const dnsTarget = this.domainDnsTarget(project, dnsMode);
+    const verificationRecord = `${challenge.recordName} ${challenge.recordType} ${challenge.recordValue}`;
     const domain: ProjectDomain = {
       id: createId('domain'),
       hostname,
+      dnsMode,
+      status: 'pending_dns',
+      verificationStatus: 'pending',
       verificationToken: challenge.token,
-      verificationRecord: `${challenge.recordName} ${challenge.recordType} ${challenge.recordValue}`,
+      verificationName: challenge.recordName,
+      verificationValue: challenge.recordValue,
+      verificationRecord,
       verified: false,
+      dnsTarget,
+      assignedNameservers,
+      delegationStatus: this.initialDelegationStatus(dnsMode),
+      providerZoneId: typeof body.providerZoneId === 'string' && body.providerZoneId.trim() ? body.providerZoneId.trim() : undefined,
+      dnsInstructions: this.domainDnsInstructions(hostname, dnsMode, challenge.recordName, challenge.recordValue, dnsTarget, assignedNameservers),
       certificateStatus: 'not_requested',
-      createdAt: nowIso(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
     };
 
     project.domains.push(domain);
     this.touch(project, 'domain_pending_verification');
-    this.audit.record(user.id, 'project.custom_domain_added', { hostname }, project.id);
+    this.audit.record(user.id, 'project.custom_domain_added', { hostname, dnsMode }, project.id);
     return domain;
   }
 
   private async verifyCustomDomain(project: Project, user: User, domainId: string, body: Record<string, unknown>): Promise<ProjectDomain> {
     const domain = this.requireDomain(project, domainId);
     const observedToken = typeof body.observedToken === 'string' ? body.observedToken : undefined;
+    domain.lastCheckedAt = nowIso();
     const verified = await this.dns.verify(domain.hostname, domain.verificationToken, observedToken);
     if (!verified) {
+      domain.verificationStatus = 'failed';
+      domain.status = 'failed';
+      domain.failureReason = 'DNS verification failed.';
+      domain.updatedAt = nowIso();
       throw new Error('DNS verification failed.');
     }
 
-    const updatedDomain = this.certificates.markRequested({ ...domain, verified: true, verifiedAt: nowIso() });
+    const verifiedAt = nowIso();
+    const updatedDomain = this.certificates.markRequested({
+      ...domain,
+      verified: true,
+      verificationStatus: 'verified',
+      status: domain.delegationStatus === 'pending' ? 'verified' : 'active',
+      verifiedAt,
+      updatedAt: verifiedAt,
+      failureReason: undefined,
+    });
     Object.assign(domain, updatedDomain);
     this.touch(project, 'domain_active');
-    this.audit.record(user.id, 'project.custom_domain_verified', { hostname: domain.hostname }, project.id);
+    this.audit.record(user.id, 'project.custom_domain_verified', { hostname: domain.hostname, dnsMode: domain.dnsMode }, project.id);
     return domain;
+  }
+
+
+  private parseDomainDnsMode(body: Record<string, unknown>, hostname: string): DomainDnsMode {
+    const requested = typeof body.dnsMode === 'string' ? body.dnsMode : typeof body.mode === 'string' ? body.mode : undefined;
+    if (requested === 'none' || requested === 'custom_cname' || requested === 'apex' || requested === 'delegated_sub_zone' || requested === 'delegated_full_zone') {
+      return requested;
+    }
+    if (requested === 'delegated_dns') {
+      return 'delegated_full_zone';
+    }
+    return hostname.split('.').length === 2 ? 'apex' : 'custom_cname';
+  }
+
+  private assignedNameservers(dnsMode: DomainDnsMode): string[] {
+    if (!this.isDelegatedDnsMode(dnsMode)) {
+      return [];
+    }
+    return ['ns1.managed-dns.divband.ir', 'ns2.managed-dns.divband.ir', 'ns3.managed-dns.divband.ir'];
+  }
+
+  private initialDelegationStatus(dnsMode: DomainDnsMode): DomainDelegationStatus {
+    return this.isDelegatedDnsMode(dnsMode) ? 'pending' : 'not_applicable';
+  }
+
+  private domainDnsTarget(project: Project, dnsMode: DomainDnsMode): string | string[] | undefined {
+    if (dnsMode === 'none' || this.isDelegatedDnsMode(dnsMode)) {
+      return undefined;
+    }
+    if (dnsMode === 'apex') {
+      return project.platformHostname;
+    }
+    return project.platformHostname;
+  }
+
+  private domainDnsInstructions(
+    hostname: string,
+    dnsMode: DomainDnsMode,
+    verificationName: string,
+    verificationValue: string,
+    dnsTarget: string | string[] | undefined,
+    assignedNameservers: string[],
+  ): DomainDnsInstruction[] {
+    const instructions: DomainDnsInstruction[] = [
+      { type: 'TXT', name: verificationName, value: verificationValue, purpose: 'ownership_verification', required: true },
+    ];
+
+    if (dnsMode === 'custom_cname' && dnsTarget) {
+      instructions.push({ type: 'CNAME', name: hostname, value: dnsTarget, purpose: 'traffic_routing', required: true });
+    }
+
+    if (dnsMode === 'apex' && dnsTarget) {
+      instructions.push({ type: 'ALIAS', name: hostname, value: dnsTarget, purpose: 'traffic_routing', required: true });
+      instructions.push({ type: 'ANAME', name: hostname, value: dnsTarget, purpose: 'traffic_routing', required: false });
+    }
+
+    if (this.isDelegatedDnsMode(dnsMode)) {
+      instructions.push({ type: 'NS', name: hostname, value: assignedNameservers, purpose: 'zone_delegation', required: true });
+    }
+
+    return instructions;
+  }
+
+  private isDelegatedDnsMode(dnsMode: DomainDnsMode): boolean {
+    return dnsMode === 'delegated_sub_zone' || dnsMode === 'delegated_full_zone';
   }
 
 

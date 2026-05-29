@@ -161,7 +161,10 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.projects = mapById(snapshot.projects.map((project) => {
     const legacyProject = project as Project & { environmentVariables?: Array<{ key: string; value: string; protected: boolean; updatedAt: string }> };
     const { environmentVariables: _environmentVariables, ...safeProject } = legacyProject;
-    return safeProject;
+    return {
+      ...safeProject,
+      domains: (safeProject.domains ?? []).map((domain) => normalizeProjectDomain(domain, safeProject.platformHostname)),
+    };
   }));
   store.projectEnvironmentSecrets = new Map((snapshot.projectEnvironmentSecrets ?? []).map((secret) => [`${secret.projectId}:${secret.key}`, secret]));
   store.projectMemberships = mapById(snapshot.projectMemberships);
@@ -176,6 +179,29 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.uploadSessions = new Map((snapshot.uploadSessions ?? []).map((session) => [session.versionId, session]));
   store.abuseActions = mapById(snapshot.abuseActions ?? []);
   return store;
+}
+
+function normalizeProjectDomain(domain: Project['domains'][number], platformHostname: string): Project['domains'][number] {
+  const legacyDomain = domain as Project['domains'][number] & { dnsMode?: Project['domains'][number]['dnsMode']; status?: Project['domains'][number]['status']; verificationStatus?: Project['domains'][number]['verificationStatus']; verificationName?: string; verificationValue?: string; assignedNameservers?: string[]; delegationStatus?: Project['domains'][number]['delegationStatus']; dnsInstructions?: Project['domains'][number]['dnsInstructions']; updatedAt?: string };
+  const dnsMode = legacyDomain.dnsMode ?? (legacyDomain.hostname.split('.').length === 2 ? 'apex' : 'custom_cname');
+  const verificationName = legacyDomain.verificationName ?? legacyDomain.verificationRecord.split(' TXT ')[0] ?? `_divband.${legacyDomain.hostname}`;
+  const verificationValue = legacyDomain.verificationValue ?? legacyDomain.verificationRecord.split(' TXT ')[1] ?? `divband-verification=${legacyDomain.verificationToken}`;
+  const assignedNameservers = legacyDomain.assignedNameservers ?? [];
+  return {
+    ...legacyDomain,
+    dnsMode,
+    status: legacyDomain.status ?? (legacyDomain.verified ? 'active' : 'pending_dns'),
+    verificationStatus: legacyDomain.verificationStatus ?? (legacyDomain.verified ? 'verified' : 'pending'),
+    verificationName,
+    verificationValue,
+    dnsTarget: legacyDomain.dnsTarget ?? platformHostname,
+    assignedNameservers,
+    delegationStatus: legacyDomain.delegationStatus ?? 'not_applicable',
+    dnsInstructions: legacyDomain.dnsInstructions ?? [
+      { type: 'TXT', name: verificationName, value: verificationValue, purpose: 'ownership_verification', required: true },
+    ],
+    updatedAt: legacyDomain.updatedAt ?? legacyDomain.verifiedAt ?? legacyDomain.createdAt,
+  };
 }
 
 function mapById<T extends { id: string }>(values: T[]): Map<string, T> {

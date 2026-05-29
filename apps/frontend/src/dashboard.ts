@@ -104,15 +104,42 @@ export interface AuthResponse {
   tokenType: 'Bearer';
 }
 
+export type DomainDnsMode = 'none' | 'custom_cname' | 'apex' | 'delegated_sub_zone' | 'delegated_full_zone';
+export type DomainStatus = 'pending_dns' | 'verified' | 'provisioning' | 'active' | 'failed' | 'disabled' | 'removing';
+export type DomainVerificationStatus = 'pending' | 'verified' | 'failed';
+export type DomainDelegationStatus = 'not_applicable' | 'pending' | 'verified' | 'failed';
+
+export interface DomainDnsInstruction {
+  type: 'TXT' | 'CNAME' | 'A' | 'AAAA' | 'ALIAS' | 'ANAME' | 'NS';
+  name: string;
+  value: string | string[];
+  purpose: 'ownership_verification' | 'traffic_routing' | 'zone_delegation';
+  required: boolean;
+}
+
 export interface ProjectDomain {
   id: string;
   hostname: string;
+  dnsMode: DomainDnsMode;
+  status: DomainStatus;
+  verificationStatus: DomainVerificationStatus;
   verificationToken: string;
+  verificationName: string;
+  verificationValue: string;
   verificationRecord: string;
   verified: boolean;
+  dnsTarget?: string | string[];
+  assignedNameservers: string[];
+  delegationStatus: DomainDelegationStatus;
+  providerZoneId?: string;
+  dnsInstructions: DomainDnsInstruction[];
   certificateStatus: 'not_requested' | 'pending' | 'issued' | 'failed';
   createdAt: string;
+  updatedAt: string;
+  lastCheckedAt?: string;
   verifiedAt?: string;
+  disabledAt?: string;
+  failureReason?: string;
 }
 
 export interface Deployment {
@@ -1231,8 +1258,10 @@ function renderDomainManagementPage(project?: Project): string {
     ? project.domains.map((domain) => `
       <li>
         <strong>${escapeHtml(domain.hostname)}</strong>
-        <span>${domain.verified ? 'Domain active' : 'Domain pending verification'}</span>
-        <code>${escapeHtml(domain.verificationRecord)}</code>
+        <span>${domain.verified ? 'Domain active' : `Domain ${domain.status}`}</span>
+        <span>DNS mode: ${escapeHtml(domain.dnsMode)}</span>
+        <span>Delegation: ${escapeHtml(domain.delegationStatus)}</span>
+        ${renderDomainInstructions(domain)}
         <button data-action="verify-domain" data-project-id="${escapeHtml(project.id)}" data-domain-id="${escapeHtml(domain.id)}">Verify</button>
       </li>`).join('')
     : '<li>No custom domains configured.</li>';
@@ -1248,6 +1277,11 @@ function renderDomainManagementPage(project?: Project): string {
       </form>
       <ul class="domain-list">${domains}</ul>
     </article>`;
+}
+
+function renderDomainInstructions(domain: ProjectDomain): string {
+  const instructions = domain.dnsInstructions.length ? domain.dnsInstructions : [{ type: 'TXT', name: domain.verificationName, value: domain.verificationValue, purpose: 'ownership_verification', required: true } satisfies DomainDnsInstruction];
+  return `<ul>${instructions.map((instruction) => `<li><code>${escapeHtml(instruction.name)} ${escapeHtml(instruction.type)} ${escapeHtml(Array.isArray(instruction.value) ? instruction.value.join(', ') : instruction.value)}</code><span>${escapeHtml(instruction.purpose)}${instruction.required ? '' : ' (optional)'}</span></li>`).join('')}</ul>`;
 }
 
 function renderEnvironmentVariablesPage(project: Project | undefined, variables: EnvironmentVariable[]): string {

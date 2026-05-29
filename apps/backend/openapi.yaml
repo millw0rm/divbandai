@@ -1731,6 +1731,43 @@ components:
       properties:
         hostname:
           type: string
+        dnsMode:
+          $ref: '#/components/schemas/DomainDnsMode'
+        providerZoneId:
+          type: string
+          description: Existing managed DNS provider zone identifier when an internal operator pre-provisioned the zone.
+    DomainDnsMode:
+      type: string
+      enum: [none, custom_cname, apex, delegated_sub_zone, delegated_full_zone]
+    DomainStatus:
+      type: string
+      enum: [pending_dns, verified, provisioning, active, failed, disabled, removing]
+    DomainVerificationStatus:
+      type: string
+      enum: [pending, verified, failed]
+    DomainDelegationStatus:
+      type: string
+      enum: [not_applicable, pending, verified, failed]
+    DomainDnsInstruction:
+      type: object
+      required: [type, name, value, purpose, required]
+      properties:
+        type:
+          type: string
+          enum: [TXT, CNAME, A, AAAA, ALIAS, ANAME, NS]
+        name:
+          type: string
+        value:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        purpose:
+          type: string
+          enum: [ownership_verification, traffic_routing, zone_delegation]
+        required:
+          type: boolean
     CertificateState:
       type: string
       enum: [not_requested, pending, issued, failed]
@@ -1741,20 +1778,59 @@ components:
           type: string
         hostname:
           type: string
+        dnsMode:
+          $ref: '#/components/schemas/DomainDnsMode'
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        verificationStatus:
+          $ref: '#/components/schemas/DomainVerificationStatus'
         verificationToken:
+          type: string
+        verificationName:
+          type: string
+        verificationValue:
           type: string
         verificationRecord:
           type: string
         verified:
           type: boolean
+        dnsTarget:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        assignedNameservers:
+          type: array
+          items:
+            type: string
+        delegationStatus:
+          $ref: '#/components/schemas/DomainDelegationStatus'
+        providerZoneId:
+          type: string
+        dnsInstructions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainDnsInstruction'
         certificateStatus:
           $ref: '#/components/schemas/CertificateState'
         createdAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastCheckedAt:
+          type: string
+          format: date-time
         verifiedAt:
           type: string
           format: date-time
+        disabledAt:
+          type: string
+          format: date-time
+        failureReason:
+          type: string
     TriggerDeploymentRequest:
       type: object
       properties:

@@ -105,12 +105,26 @@ CREATE TABLE IF NOT EXISTS domains (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   hostname TEXT NOT NULL UNIQUE,
+  dns_mode TEXT NOT NULL DEFAULT 'custom_cname',
+  status TEXT NOT NULL DEFAULT 'pending_dns',
+  verification_status TEXT NOT NULL DEFAULT 'pending',
   verification_token TEXT NOT NULL,
+  verification_name TEXT NOT NULL,
+  verification_value TEXT NOT NULL,
   verification_record TEXT NOT NULL,
   verified INTEGER NOT NULL DEFAULT 0,
+  dns_target_json TEXT,
+  assigned_nameservers_json TEXT NOT NULL DEFAULT '[]',
+  delegation_status TEXT NOT NULL DEFAULT 'not_applicable',
+  provider_zone_id TEXT,
+  dns_instructions_json TEXT NOT NULL DEFAULT '[]',
   certificate_status TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  verified_at TEXT
+  updated_at TEXT NOT NULL,
+  last_checked_at TEXT,
+  verified_at TEXT,
+  disabled_at TEXT,
+  failure_reason TEXT
 );
 
 CREATE TABLE IF NOT EXISTS environment_variables (
