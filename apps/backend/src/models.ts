@@ -98,7 +98,8 @@ export interface ProjectDomain {
 }
 
 export type CertificateState = 'not_requested' | 'pending' | 'issued' | 'failed';
-export type DeploymentState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type DeploymentState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'rolling_back';
+export type DeploymentEnvironment = 'production' | 'staging' | 'preview' | 'sandbox';
 
 export interface Deployment {
   id: string;
@@ -106,6 +107,15 @@ export interface Deployment {
   state: DeploymentState;
   gitRef: string;
   commitSha?: string;
+  environment?: DeploymentEnvironment;
+  image?: string;
+  imageDigest?: string;
+  pipelineId?: string;
+  jobUrl?: string;
+  ingressHostname?: string;
+  healthCheckUrl?: string;
+  previousDeploymentId?: string;
+  rollbackOfDeploymentId?: string;
   startedAt?: string;
   finishedAt?: string;
   logs: string[];

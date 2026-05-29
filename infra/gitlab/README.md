@@ -25,7 +25,11 @@ For each project, Terraform provisions:
 
 - `terraform/` — GitLab provider configuration and resources for tenant groups, projects, branch protection, variables, deploy keys, project access tokens, registry access, and project runners.
 - `terraform/projects.auto.tfvars.example` — Example tenant/project input document for platform operators.
-- `ci-templates/static-site.gitlab-ci.yml` — Reusable pipeline template that builds an artifact, publishes an image to the project registry, and deploys to the project's Kubernetes namespace using only the assigned runner tag.
+- `ci-templates/static-frontend.gitlab-ci.yml` — Reusable static frontend pipeline that builds an artifact, publishes an immutable image, deploys to the project namespace, updates the route, checks health, and reports status.
+- `ci-templates/full-stack-container.gitlab-ci.yml` — Reusable full-stack container pipeline for applications that ship as one web/API image.
+- `ci-templates/backend-service.gitlab-ci.yml` — Reusable backend-service pipeline for APIs and workers with optional ingress exposure.
+- `ci-templates/preview-environments.gitlab-ci.yml` — Merge-request preview environment pipeline with auto-stop cleanup.
+- `ci-templates/static-site.gitlab-ci.yml` — Backward-compatible include alias for the static frontend template.
 
 ## Applying the automation
 

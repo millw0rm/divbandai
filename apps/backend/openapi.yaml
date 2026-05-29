@@ -367,6 +367,29 @@ paths:
                     $ref: '#/components/schemas/Deployment'
                   project:
                     $ref: '#/components/schemas/Project'
+  /projects/{projectId}/deployments/report:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      summary: Report deployment lifecycle status from CI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentStatusReport'
+      responses:
+        '200':
+          description: Deployment status recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployment:
+                    $ref: '#/components/schemas/Deployment'
+                  project:
+                    $ref: '#/components/schemas/Project'
   /projects/{projectId}/deployments/{deploymentId}:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -380,6 +403,53 @@ paths:
       responses:
         '200':
           description: Deployment detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployment:
+                    $ref: '#/components/schemas/Deployment'
+  /projects/{projectId}/deployments/{deploymentId}/status:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      summary: Report status for a specific deployment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentStatusReport'
+      responses:
+        '200':
+          description: Deployment status recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployment:
+                    $ref: '#/components/schemas/Deployment'
+  /projects/{projectId}/deployments/{deploymentId}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      summary: Create a rollback deployment to the previous healthy release
+      responses:
+        '202':
+          description: Rollback deployment queued
           content:
             application/json:
               schema:
@@ -1198,7 +1268,38 @@ components:
           type: string
     DeploymentState:
       type: string
-      enum: [queued, running, succeeded, failed, cancelled]
+      enum: [queued, running, succeeded, failed, cancelled, rolling_back]
+    DeploymentEnvironment:
+      type: string
+      enum: [production, staging, preview, sandbox]
+    DeploymentStatusReport:
+      type: object
+      required: [state]
+      properties:
+        deploymentId:
+          type: string
+        state:
+          $ref: '#/components/schemas/DeploymentState'
+        gitRef:
+          type: string
+        commitSha:
+          type: string
+        environment:
+          $ref: '#/components/schemas/DeploymentEnvironment'
+        image:
+          type: string
+        imageDigest:
+          type: string
+        pipelineId:
+          type: string
+        jobUrl:
+          type: string
+        ingressHostname:
+          type: string
+        healthCheckUrl:
+          type: string
+        logLine:
+          type: string
     Deployment:
       type: object
       properties:
@@ -1211,6 +1312,24 @@ components:
         gitRef:
           type: string
         commitSha:
+          type: string
+        environment:
+          $ref: '#/components/schemas/DeploymentEnvironment'
+        image:
+          type: string
+        imageDigest:
+          type: string
+        pipelineId:
+          type: string
+        jobUrl:
+          type: string
+        ingressHostname:
+          type: string
+        healthCheckUrl:
+          type: string
+        previousDeploymentId:
+          type: string
+        rollbackOfDeploymentId:
           type: string
         startedAt:
           type: string

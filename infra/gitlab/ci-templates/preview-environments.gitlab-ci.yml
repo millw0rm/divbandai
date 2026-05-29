@@ -1,0 +1,112 @@
+# Divband reusable pipeline for merge-request preview environments.
+# Include alongside a project template when review apps are desired.
+
+stages: [preview, cleanup]
+
+variables:
+  APP_DIR: "."
+  DOCKERFILE: "Dockerfile"
+  PREVIEW_IMAGE_TAG: "$CI_REGISTRY_IMAGE:preview-$CI_COMMIT_SHA"
+  KUBE_CONTEXT: "divband"
+  KUBE_DEPLOYMENT: "app"
+  KUBE_CONTAINER: "app"
+  KUBE_SERVICE: "app"
+  PREVIEW_HOST: "$CI_PROJECT_PATH_SLUG-$CI_COMMIT_REF_SLUG.preview.divband.ir"
+  HEALTHCHECK_PATH: "/healthz"
+
+.divband_preview_default:
+  tags: ["$DIVBAND_RUNNER_TAG"]
+  interruptible: true
+  rules:
+    - if: '$DIVBAND_RUNNER_TAG == null || $DIVBAND_RUNNER_TAG == ""'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+.report_preview_deployment: &report_preview_deployment |
+  if [ -n "$DIVBAND_API_BASE_URL" ] && [ -n "$DIVBAND_PROJECT_ID" ] && [ -n "$DIVBAND_API_TOKEN" ]; then
+    curl --fail --silent --show-error --header "Authorization: Bearer $DIVBAND_API_TOKEN" --header "Content-Type: application/json" \
+      --data "{\"state\":\"${DEPLOYMENT_STATE}\",\"gitRef\":\"${CI_COMMIT_REF_NAME}\",\"commitSha\":\"${CI_COMMIT_SHA}\",\"environment\":\"preview\",\"image\":\"${PREVIEW_IMAGE_TAG}\",\"pipelineId\":\"${CI_PIPELINE_ID}\",\"jobUrl\":\"${CI_JOB_URL}\",\"ingressHostname\":\"${PREVIEW_HOST}\",\"healthCheckUrl\":\"https://${PREVIEW_HOST}${HEALTHCHECK_PATH}\",\"logLine\":\"${DEPLOYMENT_LOG}\"}" \
+      "$DIVBAND_API_BASE_URL/projects/$DIVBAND_PROJECT_ID/deployments/report"
+  fi
+
+build_preview_image:
+  extends: .divband_preview_default
+  stage: preview
+  image:
+    name: gcr.io/kaniko-project/executor:v1.23.2-debug
+    entrypoint: [""]
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+  script:
+    - >-
+      /kaniko/executor
+      --context "$CI_PROJECT_DIR/$APP_DIR"
+      --dockerfile "$CI_PROJECT_DIR/$APP_DIR/$DOCKERFILE"
+      --destination "$PREVIEW_IMAGE_TAG"
+      --cache=true
+      --cache-repo "$CI_REGISTRY_IMAGE/cache"
+
+deploy_preview_environment:
+  extends: .divband_preview_default
+  stage: preview
+  image: bitnami/kubectl:1.30
+  needs: ["build_preview_image"]
+  environment:
+    name: "review/$CI_COMMIT_REF_SLUG"
+    url: "https://$PREVIEW_HOST"
+    on_stop: stop_preview_environment
+    auto_stop_in: 3 days
+  before_script:
+    - test -n "$DIVBAND_NAMESPACE"
+    - test -n "$KUBE_CONFIG_B64"
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG_B64" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl config use-context "$KUBE_CONTEXT"
+  script:
+    - DEPLOYMENT_STATE=running DEPLOYMENT_LOG="preview rollout started" sh -c "$REPORT_PREVIEW_DEPLOYMENT"
+    - kubectl -n "$DIVBAND_NAMESPACE" create deployment "preview-$CI_COMMIT_REF_SLUG" --image "$PREVIEW_IMAGE_TAG" --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl -n "$DIVBAND_NAMESPACE" label deployment "preview-$CI_COMMIT_REF_SLUG" "app.kubernetes.io/managed-by=divband" "divband.ir/preview=$CI_COMMIT_REF_SLUG" --overwrite
+    - kubectl -n "$DIVBAND_NAMESPACE" expose deployment "preview-$CI_COMMIT_REF_SLUG" --port 80 --target-port 8080 --name "preview-$CI_COMMIT_REF_SLUG" --dry-run=client -o yaml | kubectl apply -f -
+    - kubectl -n "$DIVBAND_NAMESPACE" annotate service "preview-$CI_COMMIT_REF_SLUG" "divband.ir/host=$PREVIEW_HOST" --overwrite
+    - kubectl -n "$DIVBAND_NAMESPACE" rollout status "deployment/preview-$CI_COMMIT_REF_SLUG" --timeout=180s
+  after_script:
+    - if [ "$CI_JOB_STATUS" != "success" ]; then DEPLOYMENT_STATE=failed DEPLOYMENT_LOG="preview rollout failed" sh -c "$REPORT_PREVIEW_DEPLOYMENT"; fi
+  variables:
+    REPORT_PREVIEW_DEPLOYMENT: *report_preview_deployment
+
+healthcheck_preview_environment:
+  extends: .divband_preview_default
+  stage: preview
+  image: curlimages/curl:8.8.0
+  needs: ["deploy_preview_environment"]
+  script:
+    - curl --fail --retry 12 --retry-delay 5 --retry-all-errors "https://$PREVIEW_HOST$HEALTHCHECK_PATH"
+    - DEPLOYMENT_STATE=succeeded DEPLOYMENT_LOG="preview health check passed" sh -c "$REPORT_PREVIEW_DEPLOYMENT"
+  after_script:
+    - if [ "$CI_JOB_STATUS" != "success" ]; then DEPLOYMENT_STATE=failed DEPLOYMENT_LOG="preview health check failed" sh -c "$REPORT_PREVIEW_DEPLOYMENT"; fi
+  variables:
+    REPORT_PREVIEW_DEPLOYMENT: *report_preview_deployment
+
+stop_preview_environment:
+  extends: .divband_preview_default
+  stage: cleanup
+  image: bitnami/kubectl:1.30
+  environment:
+    name: "review/$CI_COMMIT_REF_SLUG"
+    action: stop
+  when: manual
+  allow_failure: true
+  before_script:
+    - test -n "$DIVBAND_NAMESPACE"
+    - test -n "$KUBE_CONFIG_B64"
+    - mkdir -p ~/.kube
+    - echo "$KUBE_CONFIG_B64" | base64 -d > ~/.kube/config
+    - chmod 600 ~/.kube/config
+    - kubectl config use-context "$KUBE_CONTEXT"
+  script:
+    - kubectl -n "$DIVBAND_NAMESPACE" delete deployment,service "preview-$CI_COMMIT_REF_SLUG" --ignore-not-found=true
+    - DEPLOYMENT_STATE=cancelled DEPLOYMENT_LOG="preview environment stopped" sh -c "$REPORT_PREVIEW_DEPLOYMENT"
+  variables:
+    REPORT_PREVIEW_DEPLOYMENT: *report_preview_deployment

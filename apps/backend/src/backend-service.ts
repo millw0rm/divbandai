@@ -12,6 +12,7 @@ import type {
   ApiToken,
   AuthActor,
   Deployment,
+  DeploymentState,
   EnvironmentVariable,
   GitLabIdentityLink,
   OAuthIdentity,
@@ -26,7 +27,7 @@ import { defaultStore, type BackendStore } from './store';
 import { AuthService, type CreateApiTokenInput, type LinkGitLabIdentityInput, type LinkOAuthIdentityInput, type LoginInput, type RegisterInput } from './services/auth';
 import { AuditLogService } from './services/audit-log';
 import { CertificateStatusService } from './services/certificate-status';
-import { DeploymentStatusService } from './services/deployment-status';
+import { DeploymentStatusService, type DeploymentStatusReport } from './services/deployment-status';
 import { DnsVerificationService } from './services/dns-verification';
 import { GitLabService } from './services/gitlab';
 import { KubernetesService } from './services/kubernetes';
@@ -180,6 +181,22 @@ export class BackendService {
         if (method === 'POST' && this.matches(route, 'projects', projectId, 'deployments')) {
           const { project } = this.requireProject(projectId, actor, 'deployment:trigger');
           return this.created({ deployment: this.triggerDeployment(project, user, this.optionalObject(request.body)), project }, 202);
+        }
+
+        if (method === 'POST' && this.matches(route, 'projects', projectId, 'deployments', 'report')) {
+          const { project } = this.requireProject(projectId, actor, 'deployment:trigger');
+          return this.ok({ deployment: this.reportDeploymentStatus(project, user, this.requiredObject(request.body)), project });
+        }
+
+        if (method === 'PUT' && route.segments[2] === 'deployments' && route.segments[3] && route.segments[4] === 'status') {
+          const { project } = this.requireProject(projectId, actor, 'deployment:trigger');
+          const body = this.requiredObject(request.body);
+          return this.ok({ deployment: this.reportDeploymentStatus(project, user, { ...body, deploymentId: route.segments[3] }), project });
+        }
+
+        if (method === 'POST' && route.segments[2] === 'deployments' && route.segments[3] && route.segments[4] === 'rollback') {
+          const { project } = this.requireProject(projectId, actor, 'deployment:trigger');
+          return this.created({ deployment: this.rollbackDeployment(project, user, route.segments[3]), project }, 202);
         }
 
         if (method === 'GET' && route.segments[2] === 'deployments' && route.segments[3]) {
@@ -392,6 +409,40 @@ export class BackendService {
     return deployment;
   }
 
+  private reportDeploymentStatus(project: Project, user: User, body: Record<string, unknown>): Deployment {
+    const state = typeof body.state === 'string' ? body.state : '';
+    if (!this.isDeploymentState(state)) {
+      throw new Error('Deployment report requires a valid state.');
+    }
+
+    const deployment = this.deployments.report(project, {
+      deploymentId: typeof body.deploymentId === 'string' ? body.deploymentId : undefined,
+      state,
+      gitRef: typeof body.gitRef === 'string' ? body.gitRef : undefined,
+      commitSha: typeof body.commitSha === 'string' ? body.commitSha : undefined,
+      environment: this.deploymentEnvironment(body.environment),
+      image: typeof body.image === 'string' ? body.image : undefined,
+      imageDigest: typeof body.imageDigest === 'string' ? body.imageDigest : undefined,
+      pipelineId: typeof body.pipelineId === 'string' ? body.pipelineId : undefined,
+      jobUrl: typeof body.jobUrl === 'string' ? body.jobUrl : undefined,
+      ingressHostname: typeof body.ingressHostname === 'string' ? body.ingressHostname : undefined,
+      healthCheckUrl: typeof body.healthCheckUrl === 'string' ? body.healthCheckUrl : undefined,
+      logLine: typeof body.logLine === 'string' ? body.logLine : undefined,
+    } satisfies DeploymentStatusReport);
+    this.touch(project, state === 'succeeded' ? 'deployed' : state === 'failed' ? 'failed' : 'building');
+    this.audit.record(user.id, 'project.deployment_status_reported', { deploymentId: deployment.id, state }, project.id);
+    return deployment;
+  }
+
+  private rollbackDeployment(project: Project, user: User, deploymentId: string): Deployment {
+    const deployment = this.requireDeployment(project, deploymentId);
+    const rollback = this.deployments.rollback(project, deployment);
+    project.deployments.push(rollback);
+    this.touch(project, 'building');
+    this.audit.record(user.id, 'project.deployment_rollback_triggered', { deploymentId, rollbackDeploymentId: rollback.id }, project.id);
+    return rollback;
+  }
+
 
   private createAiChangeRequest(project: Project, user: User, body: Record<string, unknown>): AiChangeRequest {
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -581,6 +632,14 @@ export class BackendService {
   private touchAiChangeRequest(changeRequest: AiChangeRequest, status: AiChangeRequest['status']): void {
     changeRequest.status = status;
     changeRequest.updatedAt = nowIso();
+  }
+
+  private isDeploymentState(state: string): state is DeploymentState {
+    return state === 'queued' || state === 'running' || state === 'succeeded' || state === 'failed' || state === 'cancelled' || state === 'rolling_back';
+  }
+
+  private deploymentEnvironment(environment: unknown): DeploymentStatusReport['environment'] {
+    return environment === 'production' || environment === 'staging' || environment === 'preview' || environment === 'sandbox' ? environment : undefined;
   }
 
   private isAiCiState(status: string): status is AiCiStatus['status'] {

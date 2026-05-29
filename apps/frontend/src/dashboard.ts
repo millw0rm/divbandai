@@ -68,9 +68,18 @@ export interface ProjectDomain {
 export interface Deployment {
   id: string;
   projectId: string;
-  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'rolling_back';
   gitRef: string;
   commitSha?: string;
+  environment?: 'production' | 'staging' | 'preview' | 'sandbox';
+  image?: string;
+  imageDigest?: string;
+  pipelineId?: string;
+  jobUrl?: string;
+  ingressHostname?: string;
+  healthCheckUrl?: string;
+  previousDeploymentId?: string;
+  rollbackOfDeploymentId?: string;
   startedAt?: string;
   finishedAt?: string;
   logs: string[];
@@ -388,6 +397,22 @@ export class DivbandApiClient {
       method: 'POST',
       body: input,
     });
+    return response.deployment;
+  }
+
+  async reportDeploymentStatus(projectId: string, input: Partial<Deployment> & { state: Deployment['state']; logLine?: string }): Promise<Deployment> {
+    const response = await this.request<{ deployment: Deployment }>(`/projects/${encodeURIComponent(projectId)}/deployments/report`, {
+      method: 'POST',
+      body: input,
+    });
+    return response.deployment;
+  }
+
+  async rollbackDeployment(projectId: string, deploymentId: string): Promise<Deployment> {
+    const response = await this.request<{ deployment: Deployment }>(
+      `/projects/${encodeURIComponent(projectId)}/deployments/${encodeURIComponent(deploymentId)}/rollback`,
+      { method: 'POST' },
+    );
     return response.deployment;
   }
 
