@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and replace provider-specific values before apply.
+platform_domain       = "divband.ir"
+public_ingress_target = "REPLACE_WITH_INGRESS_LOAD_BALANCER"
+dns_zone_id           = "REPLACE_WITH_DNS_ZONE_ID"
+
+kubeconfig_path    = "~/.kube/config"
+kubeconfig_context = "divband-production"
+cluster_name       = "divband-production"
+cluster_endpoint   = "https://REPLACE_WITH_KUBERNETES_API_SERVER"
+
+# Keep false when another cluster automation system installs Helm charts and use
+# `terraform output` as the shared-platform wiring contract.
+apply_kubernetes_resources = true
+
+# Prefer injecting these through TF_VAR_* or a secure Terraform Cloud variable set.
+# create_dns_provider_secret = true
+# dns_provider_api_token      = "REPLACE_WITH_DNS_PROVIDER_TOKEN"
+# create_external_secrets_vault_token_secret = true
+# external_secrets_vault_token               = "REPLACE_WITH_VAULT_TOKEN"
