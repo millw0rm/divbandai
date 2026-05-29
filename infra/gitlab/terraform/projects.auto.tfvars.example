@@ -1,0 +1,50 @@
+gitlab_token = "REPLACE_WITH_PLATFORM_PROVISIONER_PAT"
+
+# Optional platform parent group. Leave null to create tenant groups at the GitLab root.
+parent_group_id = null
+
+tenants = {
+  acme = {
+    name        = "Acme Corp"
+    path        = "acme"
+    description = "Acme tenant namespace managed by divband"
+
+    variables = {
+      DIVBAND_TENANT_ID = {
+        value     = "tenant-acme"
+        protected = true
+      }
+    }
+
+    projects = {
+      marketing = {
+        name                 = "Marketing Site"
+        path                 = "marketing"
+        kubernetes_namespace = "project-marketing"
+        runner_tag           = "divband-marketing"
+
+        protected_branches = {
+          production = {
+            push_access_level  = "no one"
+            merge_access_level = "maintainer"
+          }
+        }
+
+        variables = {
+          DIVBAND_ENVIRONMENT = {
+            value     = "production"
+            protected = true
+          }
+        }
+
+        secrets = {
+          KUBE_CONFIG_B64 = {
+            value     = "REPLACE_WITH_BASE64_KUBECONFIG"
+            protected = true
+            masked    = true
+          }
+        }
+      }
+    }
+  }
+}
