@@ -121,7 +121,7 @@ export class AuthService {
         throw new Error('Authentication is required.');
       }
       session.lastSeenAt = nowIso();
-      return { user, session };
+      return { user, session, platformAdmin: this.platformAdminForUser(user.id) };
     }
 
     const apiToken = this.findApiToken(tokenHash);
@@ -131,7 +131,7 @@ export class AuthService {
         throw new Error('Authentication is required.');
       }
       apiToken.lastUsedAt = nowIso();
-      return { user, apiToken };
+      return { user, apiToken, platformAdmin: this.platformAdminForUser(user.id) };
     }
 
     throw new Error('Authentication is required.');
@@ -215,6 +215,10 @@ export class AuthService {
     };
     this.store.gitlabIdentityLinks.set(link.id, link);
     return link;
+  }
+
+  platformAdminForUser(userId: string) {
+    return [...this.store.platformAdmins.values()].find((admin) => admin.userId === userId && !admin.revokedAt);
   }
 
   projectMembershipFor(actor: AuthActor, projectId: string): ProjectMembership | undefined {

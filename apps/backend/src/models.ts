@@ -11,6 +11,8 @@ export interface User {
   email: string;
   name: string;
   createdAt: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
 }
 
 export interface Organization {
@@ -19,6 +21,8 @@ export interface Organization {
   slug: string;
   createdAt: string;
   updatedAt: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
 }
 
 export interface OrganizationMembership {
@@ -81,10 +85,32 @@ export interface GitLabIdentityLink {
   linkedAt: string;
 }
 
+export type PlatformAdminRole = 'support' | 'security' | 'super_admin';
+
+export interface PlatformAdmin {
+  id: string;
+  userId: string;
+  role: PlatformAdminRole;
+  grantedBy: string;
+  grantedAt: string;
+  revokedAt?: string;
+}
+
 export interface AuthActor {
   user: User;
   session?: AuthSession;
   apiToken?: ApiToken;
+  platformAdmin?: PlatformAdmin;
+}
+
+export interface AbuseAction {
+  id: string;
+  targetType: 'user' | 'organization' | 'project' | 'domain';
+  targetId: string;
+  action: 'warn' | 'suspend' | 'unsuspend' | 'restrict_deployments';
+  reason: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface ProjectDomain {
@@ -160,6 +186,8 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
 }
 
 export interface PublishFileManifest {
