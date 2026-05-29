@@ -1,0 +1,24 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE_TAG: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+
+build:
+  stage: build
+  tags:
+    - "$DIVBAND_RUNNER_TAG"
+  script:
+    - docker build -t "$IMAGE_TAG" .
+    - docker push "$IMAGE_TAG"
+
+deploy:
+  stage: deploy
+  tags:
+    - "$DIVBAND_RUNNER_TAG"
+  script:
+    - kubectl -n "$DIVBAND_NAMESPACE" set image deployment/web web="$IMAGE_TAG"
+    - kubectl -n "$DIVBAND_NAMESPACE" rollout status deployment/web
+  only:
+    - main

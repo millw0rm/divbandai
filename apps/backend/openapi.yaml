@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: divband Platform API
+  version: 0.1.0
+paths:
+  /projects:
+    get:
+      summary: List projects visible to the current user
+      responses:
+        '200':
+          description: Project list
+    post:
+      summary: Create a project and start provisioning
+      responses:
+        '202':
+          description: Project accepted for provisioning
+  /projects/{projectId}:
+    get:
+      summary: Get project status and metadata
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Project detail
+  /projects/{projectId}/domains:
+    post:
+      summary: Add a custom domain and return DNS verification instructions
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: Domain verification pending
+  /projects/{projectId}/ai/change-requests:
+    post:
+      summary: Ask the AI assistant to draft a project change
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '202':
+          description: AI change request accepted
