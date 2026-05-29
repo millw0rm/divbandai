@@ -37,6 +37,10 @@ variable "tenants" {
       default_branch         = optional(string, "main")
       visibility             = optional(string, "private")
       kubernetes_namespace   = string
+      # Terraform creates one project-scoped runner per project and exports its
+      # authentication token through the sensitive runner_authentication_tokens
+      # output for Ansible/Vault handoff. Keep runner_tag stable because jobs and
+      # runner hosts use it as the project isolation boundary.
       runner_tag             = string
       runner_description     = optional(string, null)
       runner_protected_only  = optional(bool, true)

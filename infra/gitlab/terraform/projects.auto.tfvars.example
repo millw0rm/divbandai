@@ -21,6 +21,10 @@ tenants = {
         name                 = "Marketing Site"
         path                 = "marketing"
         kubernetes_namespace = "project-marketing"
+        # Terraform creates the project-scoped runner and exports its
+        # authentication token as runner_authentication_tokens["acme/marketing"].
+        # Move that token to Vault, or let the Ansible runner role read the output
+        # during the same protected provisioning run.
         runner_tag           = "divband-marketing"
 
         protected_branches = {
