@@ -35,7 +35,7 @@ Use the production-oriented topology when the environment hosts customer traffic
 | GitLab | Separate self-managed instance or managed GitLab | Hosts project repositories, CI/CD metadata, tokens, and merge requests. | Keep GitLab outside the Divband control VM. Use managed GitLab when available to reduce backup and upgrade burden. |
 | Runner pool | Separate runner VMs or Kubernetes runner executors | Builds and deploys projects. | Use dedicated runner pools with project-specific tags, protected variables, and no untagged execution for deployment jobs. |
 | Database, object storage, and secret store | Separate managed services or dedicated hosts where applicable | Store application state, static assets, artifacts, backups, and secrets. | Use managed PostgreSQL, S3-compatible object storage, and Vault or a cloud secret manager when possible. Avoid co-locating these durable dependencies with ephemeral runners. |
-| External load balancer | 1 highly available endpoint | Routes public traffic to ingress and exposes stable platform endpoints. | Terminate or pass through TLS according to the ingress design. Use it for the Kubernetes API endpoint when running multiple control-plane nodes. |
+| External load balancer | 1 highly available endpoint backed by 1+ `load_balancers` VMs | Routes public traffic to ingress and exposes stable platform endpoints. | The Ansible VM path installs HAProxy/keepalived here: TCP `6443` forwards to control-plane VMs, while public `80`/`443` forward to ingress-nginx node ports on `public_ingress_target` nodes. Use the VIP for the Kubernetes API endpoint when running multiple control-plane nodes. |
 
 Production deployments should keep tenant workloads, CI execution, source control, persistent data, and platform control services in separately maintainable failure domains. Shared services can still be automated from this repository, but the durable data plane should have its own backups, rotation policies, and monitoring.
 
@@ -51,10 +51,24 @@ The existing Ansible inventory groups map directly to the VM host groups used by
 | Kubernetes worker VMs | `k8s_workers` | `kubernetes` role with `kubernetes_node_role: worker` | Tenant workload and shared add-on nodes. |
 | GitLab VM or GitLab connector host | `gitlab` | `gitlab` role | Installs self-managed GitLab with `gitlab_mode: install` or connects automation to an existing GitLab with `gitlab_mode: connect`. |
 | Runner VMs | `runners` | `gitlab_runner` role | Registers GitLab runners and applies runner-specific project keys, tokens, executor settings, and tags. |
-| External load balancers | `load_balancers` | Operator-managed or future role | Stable public entry point for ingress and, in production, the Kubernetes API endpoint. |
+| External load balancers | `load_balancers` | `load_balancer` role | HAProxy/keepalived hosts. They provide the stable public entry point for ingress and, in production, the Kubernetes API endpoint. |
 | Monitoring or operations VMs | `monitoring` | Operator-managed or future role | Optional home for monitoring, log storage, alert routing, or bastion-style operational tools. |
 
-The current `site.yml` playbook prepares all hosts, bootstraps the Kubernetes control plane, joins workers, installs ingress/cert-manager/External Secrets/observability/Divband from the first control-plane node, then provisions GitLab and registers runners.
+The current `site.yml` playbook prepares all hosts, bootstraps the Kubernetes control plane, configures external load balancers, joins workers, installs ingress/cert-manager/External Secrets/observability/Divband from the first control-plane node, then provisions GitLab and registers runners.
+
+
+## Load-balancer, DNS, and ingress IP model
+
+The VM reference path uses operator-supplied VM addresses plus an optional floating VIP rather than assuming a cloud load balancer exists. Keep the addresses aligned as follows:
+
+| Concern | What to set | Relationship to VM IPs |
+| --- | --- | --- |
+| Kubernetes API endpoint | `kubernetes_api_endpoint` | Use `https://<public_vip-or-load-balancer-dns>:6443` when the `load_balancers` group is present. HAProxy forwards that port to the `ansible_host` values in `k8s_control_plane`. For a minimum single-node lab without a load balancer, this may be `https://<first-control-plane-vm-ip>:6443`. |
+| Public ingress backends | `public_ingress_target` | Defaults to `k8s_workers`, so HAProxy forwards public `80` and `443` to each worker VM `ansible_host`. Use a dedicated ingress-node group or explicit backend list if ingress-nginx is pinned somewhere else. |
+| Ingress controller service IPs | `ingress_nginx_service_type`, `ingress_nginx_http_node_port`, `ingress_nginx_https_node_port` | The HAProxy path sets ingress-nginx to `NodePort` and uses stable node ports `32080` and `32443`. Kubernetes Service cluster IPs remain internal-only and should not be used in public DNS. If you switch to MetalLB/kube-vip, set `ingress_nginx_service_type: LoadBalancer` and point DNS at the allocated Service external IP instead. |
+| Platform DNS records | `divband_public_hostname`, `divband_public_site_domain`, `divband_upload_domain`, tenant hostnames | Create `A`/`AAAA` records for the load-balancer `public_vip` when keepalived owns a floating address, or for the single load-balancer VM IP in non-HA environments. These records should not point directly at worker node IPs unless you intentionally bypass the load-balancer tier. |
+
+For the example inventory below, `kubernetes_api_endpoint: https://192.0.2.50:6443` means workers and collected kubeconfigs talk to the load-balancer VM. If `public_vip: 198.51.100.10` is routable in your environment, use `https://198.51.100.10:6443` or a DNS name that resolves to it, and point platform DNS records at `198.51.100.10`. HAProxy then sends API traffic to `192.0.2.11`-`192.0.2.13` and ingress traffic to worker node ports on `192.0.2.21` and `192.0.2.22`.
 
 ## Platform service path mapping
 
@@ -90,6 +104,10 @@ all:
     kubernetes_template_dir: "{{ playbook_dir }}/../../k8s/base"
 
     ingress_class_name: nginx
+    ingress_nginx_service_type: NodePort
+    ingress_nginx_http_node_port: 32080
+    ingress_nginx_https_node_port: 32443
+    public_ingress_target: k8s_workers
     cert_manager_cluster_issuer: letsencrypt-prod
     cert_manager_acme_email: ops@divband.example
     cert_manager_acme_server: https://acme-v02.api.letsencrypt.org/directory
@@ -166,10 +184,7 @@ all:
         lb-1:
           ansible_host: 192.0.2.50
           public_vip: 198.51.100.10
-          forwards:
-            kubernetes_api: 6443
-            http: 80
-            https: 443
+          load_balancer_keepalived_interface: eth0
 
     monitoring:
       hosts:

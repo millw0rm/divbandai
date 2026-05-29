@@ -11,3 +11,26 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: ingress_nginx_apply
   changed_when: "'configured' in ingress_nginx_apply.stdout or 'created' in ingress_nginx_apply.stdout"
+
+
+- name: Expose ingress-nginx through stable node ports
+  ansible.builtin.command:
+    cmd: >-
+      kubectl -n ingress-nginx patch service ingress-nginx-controller
+      --type merge
+      -p '{"spec":{"type":"{{ ingress_nginx_service_type }}","ports":[{"name":"http","port":80,"protocol":"TCP","targetPort":"http","nodePort":{{ ingress_nginx_http_node_port }}},{"name":"https","port":443,"protocol":"TCP","targetPort":"https","nodePort":{{ ingress_nginx_https_node_port }}}]}}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: ingress_nginx_service_patch
+  changed_when: "'patched' in ingress_nginx_service_patch.stdout"
+  when: ingress_nginx_service_type == 'NodePort'
+
+
+- name: Allow ingress node ports through public ingress target firewalls
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.1 }}"
+    proto: tcp
+  delegate_to: "{{ item.0 }}"
+  loop: "{{ groups[public_ingress_target] | default([]) | product([ingress_nginx_http_node_port, ingress_nginx_https_node_port]) | list }}"
+  when: ingress_nginx_service_type == 'NodePort' and public_ingress_target is string

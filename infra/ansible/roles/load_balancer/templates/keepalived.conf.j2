@@ -1,0 +1,28 @@
+global_defs {
+    enable_script_security
+    script_user root
+}
+
+vrrp_script chk_haproxy {
+    script "/usr/bin/pgrep haproxy"
+    interval 2
+    weight 2
+}
+
+vrrp_instance divband_public_vip {
+    state {{ load_balancer_keepalived_state }}
+    interface {{ load_balancer_keepalived_interface }}
+    virtual_router_id {{ load_balancer_keepalived_virtual_router_id }}
+    priority {{ load_balancer_keepalived_priority_base - groups['load_balancers'].index(inventory_hostname) }}
+    advert_int {{ load_balancer_keepalived_advert_interval }}
+    authentication {
+        auth_type PASS
+        auth_pass {{ load_balancer_keepalived_auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ public_vip }}
+    }
+    track_script {
+        chk_haproxy
+    }
+}

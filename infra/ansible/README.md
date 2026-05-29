@@ -27,10 +27,11 @@ The role currently enforces this boundary with `kubernetes_distribution: k3s`; s
 - `roles/common` — admin users, SSH hardening, firewall rules, base packages, and time sync.
 - `roles/container_runtime` — installs `containerd` by default or Docker when `container_runtime_engine: docker` is set.
 - `roles/kubernetes` — installs k3s control-plane and worker nodes, renders an endpoint kubeconfig, and fetches it to `artifacts/kubeconfig` for operator hand-off.
-- `roles/ingress` — installs the nginx ingress controller.
+- `roles/ingress` — installs the nginx ingress controller and, for the VM load-balancer path, pins its Service to stable NodePorts.
 - `roles/cert_manager` — installs cert-manager and applies an ACME `ClusterIssuer`.
 - `roles/external_secrets` — installs External Secrets Operator and configures a `ClusterSecretStore`.
 - `roles/observability` — installs metrics-server and a Fluent Bit DaemonSet as the initial metrics/logging agents.
+- `roles/load_balancer` — installs HAProxy/keepalived on `load_balancers` hosts to forward `:6443` to Kubernetes control-plane nodes and public `:80`/`:443` to ingress-nginx nodes.
 - `roles/gitlab` — connects to an existing GitLab endpoint, installs self-hosted GitLab when `gitlab_mode: install` is selected, and can run the Terraform stack under `../gitlab/terraform`.
 - `roles/gitlab_runner` — installs GitLab Runner, resolves project runner tags and authentication tokens from Terraform outputs, disables untagged jobs, and registers dedicated runners.
 - `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer.
@@ -90,7 +91,7 @@ Use the groups consistently:
 
 - `k8s_control_plane` hosts run the Kubernetes API, create the k3s join token, and install cluster add-ons.
 - `k8s_workers` hosts join the Kubernetes cluster as application nodes.
-- `load_balancers` should expose `kubernetes_api_endpoint` and ingress traffic when you place the Kubernetes API or HTTP routing behind a stable VIP/DNS name.
+- `load_balancers` run the HAProxy/keepalived path from `roles/load_balancer`; they expose `kubernetes_api_endpoint` on TCP `6443` and public HTTP/HTTPS on TCP `80`/`443`.
 - `gitlab` hosts either run GitLab or represent the existing GitLab endpoint that Terraform configures.
 - `runners` hosts run GitLab Runner and need the runner authentication token from provisioning.
 - `monitoring` is prepared by `common` now and reserved for follow-up roles outside the cluster.
@@ -108,7 +109,10 @@ Required or commonly customized variables:
 | `divband_domain`, `divband_public_hostname` | Platform DNS names for the control plane and tenant routes. |
 | `container_runtime_engine` | `containerd` by default; set to `docker` only when needed. |
 | `kubernetes_distribution` | Must be `k3s` for this first bootstrap path. |
-| `kubernetes_api_endpoint` | Stable API endpoint embedded into collected kubeconfigs and used by workers, usually `https://<load-balancer-or-first-control-plane>:6443`. |
+| `kubernetes_api_endpoint` | Stable API endpoint embedded into collected kubeconfigs and used by workers, usually `https://<load-balancer-vip-or-first-control-plane>:6443`. When `load_balancers` has `public_vip`, use that VIP or its DNS name. |
+| `public_ingress_target` | Inventory group name, or explicit backend list, that HAProxy uses for ingress HTTP/HTTPS backends. Defaults to `k8s_workers`. |
+| `ingress_nginx_service_type`, `ingress_nginx_http_node_port`, `ingress_nginx_https_node_port` | Expose ingress-nginx on stable node ports for the HAProxy path; defaults are `NodePort`, `32080`, and `32443`. |
+| `public_vip` | Optional per-load-balancer floating address managed by keepalived. Point platform DNS and `kubernetes_api_endpoint` at this value when using a VIP. |
 | `kubernetes_kubeconfig_local_path` | Local operator artifact path for the collected kubeconfig; defaults to `infra/ansible/artifacts/kubeconfig`. |
 | `kubernetes_kubeconfig_context` | Context name written into the collected kubeconfig. |
 | `cert_manager_acme_email`, `cert_manager_acme_server`, `cert_manager_cluster_issuer` | ACME account and issuer settings. |
@@ -129,6 +133,17 @@ When `gitlab_run_terraform: true`, the GitLab role can run `terraform init`/`app
 2. Write each `tenant/project` token into the platform secret store path used for Ansible Vault or your external secret backend, for example `divband/gitlab/runners/acme/marketing/token`.
 3. Reference that stored value as `vault_gitlab_runner_token` in host/group vars, or allow the runner playbook to read the Terraform output directly during the same protected provisioning run.
 4. Do not commit tokens to inventory, Terraform variable files, or runner configuration examples.
+
+### Load-balancer and DNS handoff
+
+The default VM path uses external HAProxy/keepalived hosts rather than a Kubernetes-native load-balancer controller:
+
+1. `kubernetes_api_endpoint` is the stable API URL written into kubeconfigs and used by k3s workers. In production, set it to `https://<public_vip-or-lb-dns>:6443`; for a single non-HA cluster you may temporarily point it at the first control-plane VM IP.
+2. `public_ingress_target` tells HAProxy where to send public HTTP/HTTPS traffic. The default value, `k8s_workers`, resolves to the `ansible_host` values of the worker VMs. You can replace it with another inventory group or with an explicit list of `{name, address}` objects when ingress-nginx should run on dedicated nodes.
+3. The ingress role patches `ingress-nginx-controller` to `type: NodePort` with `ingress_nginx_http_node_port: 32080` and `ingress_nginx_https_node_port: 32443`. HAProxy listens on public `80`/`443` and forwards to those node ports on every `public_ingress_target` backend.
+4. Platform DNS records (`divband_public_hostname`, `divband_public_site_domain`, `divband_upload_domain`, and any tenant hostnames) should resolve to the load-balancer `public_vip` or to the single load-balancer VM IP when no VIP is used. They should not resolve to Kubernetes Service cluster IPs because those addresses are only routable inside the cluster.
+
+If you later replace this path with MetalLB, kube-vip, or a cloud load balancer, set `ingress_nginx_service_type: LoadBalancer`, point platform DNS at the allocated ingress Service IP, and either disable the external ingress path with `load_balancer_ingress_enabled: false` or remove the `load_balancers` hosts from that environment.
 
 ## 4. Install Ansible dependencies
 
@@ -151,6 +166,7 @@ Useful targeted runs:
 
 ```sh
 ansible-playbook -i inventory.yml playbooks/site.yml --limit k8s_control_plane --ask-vault-pass
+ansible-playbook -i inventory.yml playbooks/site.yml --limit load_balancers --ask-vault-pass
 ansible-playbook -i inventory.yml playbooks/site.yml --limit k8s_workers --ask-vault-pass
 ansible-playbook -i inventory.yml playbooks/gitlab.yml --ask-vault-pass
 ansible-playbook -i inventory.yml playbooks/runners.yml --ask-vault-pass

@@ -18,6 +18,12 @@
     - role: kubernetes
       kubernetes_node_role: control_plane
 
+- name: Configure external load balancers
+  hosts: load_balancers
+  become: true
+  roles:
+    - role: load_balancer
+
 - name: Join Kubernetes workers
   hosts: k8s_workers
   become: true

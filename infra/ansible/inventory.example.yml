@@ -16,12 +16,17 @@ all:
 
     container_runtime_engine: containerd
     kubernetes_distribution: k3s
-    kubernetes_api_endpoint: "https://REPLACE_WITH_CONTROL_PLANE_IP:6443"
+    kubernetes_api_endpoint: "https://REPLACE_WITH_LOAD_BALANCER_OR_CONTROL_PLANE_IP:6443"
     kubernetes_pod_cidr: 10.42.0.0/16
     kubernetes_service_cidr: 10.43.0.0/16
     kubernetes_template_dir: "{{ playbook_dir }}/../../k8s/base"
 
     ingress_class_name: nginx
+    ingress_nginx_service_type: NodePort
+    ingress_nginx_http_node_port: 32080
+    ingress_nginx_https_node_port: 32443
+    public_ingress_target: k8s_workers
+
     cert_manager_cluster_issuer: letsencrypt-prod
     cert_manager_acme_email: ops@divband.ir
     cert_manager_acme_server: https://acme-v02.api.letsencrypt.org/directory
@@ -88,6 +93,10 @@ all:
       hosts:
         lb-1:
           ansible_host: 192.0.2.50
+          # Optional floating VIP shared by multiple load_balancers with keepalived.
+          # Point kubernetes_api_endpoint and public platform DNS at this value when set.
+          public_vip: 198.51.100.10
+          load_balancer_keepalived_interface: eth0
     monitoring:
       hosts:
         monitoring-1:

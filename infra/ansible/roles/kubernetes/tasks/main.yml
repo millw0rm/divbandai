@@ -4,6 +4,13 @@
     msg: "This bootstrap path currently implements k3s. Set kubernetes_distribution: k3s or extend the role for kubeadm."
   when: kubernetes_distribution != 'k3s'
 
+- name: Allow Kubernetes API through host firewall
+  community.general.ufw:
+    rule: allow
+    port: "6443"
+    proto: tcp
+  when: kubernetes_node_role == 'control_plane'
+
 - name: Install k3s server on control plane nodes
   ansible.builtin.shell: |
     set -euo pipefail
