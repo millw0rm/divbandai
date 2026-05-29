@@ -28,6 +28,8 @@
       - divband_database_url | trim | length > 0
       - divband_database_url != 'sqlite://./data/divband-backend.sqlite'
       - divband_database_url is not search('REPLACE_WITH_')
+      - divband_gitlab_url | trim | length > 0
+      - divband_gitlab_url is not search('REPLACE_WITH_')
       - (divband_gitlab_token | trim | length > 0) or (divband_gitlab_access_token | trim | length > 0)
       - (divband_gitlab_token | trim | length == 0) or (divband_gitlab_token is not search('REPLACE_WITH_'))
       - (divband_gitlab_access_token | trim | length == 0) or (divband_gitlab_access_token is not search('REPLACE_WITH_'))
@@ -38,8 +40,9 @@
       divband_environment=production requires explicit non-local values for
       API_BASE_URL, PUBLIC_SITE_DOMAIN, UPLOAD_DOMAIN, OBJECT_STORAGE_BUCKET,
       OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_REGION, OBJECT_STORAGE_ACCESS_KEY_ID,
-      OBJECT_STORAGE_SECRET_ACCESS_KEY, DATABASE_URL, GITLAB_TOKEN or
-      GITLAB_ACCESS_TOKEN, and DIVBAND_TOKEN_HASH_PEPPER. Set the corresponding
+      OBJECT_STORAGE_SECRET_ACCESS_KEY, DATABASE_URL, GITLAB_URL,
+      GITLAB_TOKEN or GITLAB_ACCESS_TOKEN, optional
+      GITLAB_NAMESPACE_ID, and DIVBAND_TOKEN_HASH_PEPPER. Set the corresponding
       divband_* variables in production inventory or Ansible Vault.
     success_msg: Production divband app configuration is complete.
   when: (divband_environment | default('demo') | lower) == 'production'

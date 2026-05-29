@@ -39,13 +39,18 @@
     - role: cert_manager
     - role: external_secrets
     - role: observability
-    - role: divband_app
 
 - name: Provision or connect GitLab
   hosts: gitlab
   become: true
   roles:
     - role: gitlab
+
+- name: Deploy divband control plane application
+  hosts: k8s_control_plane[0]
+  become: true
+  roles:
+    - role: divband_app
 
 - name: Register GitLab runners
   hosts: runners

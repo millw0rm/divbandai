@@ -19,11 +19,15 @@ stringData:
   DATABASE_URL: {{ divband_database_url | string | to_json }}
   OBJECT_STORAGE_ACCESS_KEY_ID: {{ divband_object_storage_access_key_id | string | to_json }}
   OBJECT_STORAGE_SECRET_ACCESS_KEY: {{ divband_object_storage_secret_access_key | string | to_json }}
+  GITLAB_URL: {{ divband_gitlab_url | string | to_json }}
 {% if divband_gitlab_token | trim | length > 0 %}
   GITLAB_TOKEN: {{ divband_gitlab_token | string | to_json }}
 {% endif %}
 {% if divband_gitlab_access_token | trim | length > 0 %}
   GITLAB_ACCESS_TOKEN: {{ divband_gitlab_access_token | string | to_json }}
+{% endif %}
+{% if divband_gitlab_namespace_id | string | trim | length > 0 %}
+  GITLAB_NAMESPACE_ID: {{ divband_gitlab_namespace_id | string | to_json }}
 {% endif %}
   DIVBAND_TOKEN_HASH_PEPPER: {{ divband_token_hash_pepper | string | to_json }}
 ---
@@ -78,6 +82,11 @@ spec:
                 secretKeyRef:
                   name: divband-backend-env
                   key: OBJECT_STORAGE_SECRET_ACCESS_KEY
+            - name: GITLAB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: GITLAB_URL
 {% if divband_gitlab_token | trim | length > 0 %}
             - name: GITLAB_TOKEN
               valueFrom:
@@ -91,6 +100,13 @@ spec:
                 secretKeyRef:
                   name: divband-backend-env
                   key: GITLAB_ACCESS_TOKEN
+{% endif %}
+{% if divband_gitlab_namespace_id | string | trim | length > 0 %}
+            - name: GITLAB_NAMESPACE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: GITLAB_NAMESPACE_ID
 {% endif %}
             - name: DIVBAND_TOKEN_HASH_PEPPER
               valueFrom:
@@ -107,8 +123,10 @@ spec:
   'OBJECT_STORAGE_ACCESS_KEY_ID',
   'OBJECT_STORAGE_SECRET_ACCESS_KEY',
   'DATABASE_URL',
+  'GITLAB_URL',
   'GITLAB_TOKEN',
   'GITLAB_ACCESS_TOKEN',
+  'GITLAB_NAMESPACE_ID',
   'DIVBAND_TOKEN_HASH_PEPPER'
 ] %}
 {% for key, value in divband_app_env.items() if key not in reserved_env %}

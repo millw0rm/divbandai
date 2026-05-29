@@ -26,8 +26,10 @@ divband_object_storage_region: us-east-1
 divband_object_storage_access_key_id: minioadmin
 divband_object_storage_secret_access_key: minioadmin
 divband_database_url: sqlite://./data/divband-backend.sqlite
-divband_gitlab_token: "{{ gitlab_token | default('') }}"
-divband_gitlab_access_token: "{{ gitlab_access_token | default('') }}"
+divband_gitlab_url: "{{ gitlab_url | default('https://git.divband.ir') }}"
+divband_gitlab_token: "{{ vault_divband_gitlab_token | default(gitlab_token | default('')) }}"
+divband_gitlab_access_token: "{{ vault_divband_gitlab_access_token | default(gitlab_access_token | default('')) }}"
+divband_gitlab_namespace_id: "{{ vault_divband_gitlab_namespace_id | default(gitlab_namespace_id | default('')) }}"
 divband_token_hash_pepper: divband-local-development-token-pepper
 
 # Additional backend environment variables. The production-required variables
@@ -39,4 +41,3 @@ divband_app_env:
   KUBERNETES_MODE: kubeconfig
   KUBERNETES_CONFIG_MODE: kubeconfig
   KUBECONFIG: "{{ divband_kubeconfig_mount_path }}"
-  GITLAB_URL: "{{ gitlab_url | default('https://git.divband.ir') }}"

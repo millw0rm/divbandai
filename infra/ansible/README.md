@@ -118,10 +118,15 @@ Required or commonly customized variables:
 | `cert_manager_acme_email`, `cert_manager_acme_server`, `cert_manager_cluster_issuer` | ACME account and issuer settings. |
 | `external_secrets_store_name` and provider settings | Must match the `REPLACE_WITH_CLUSTER_SECRET_STORE` value expected by `infra/k8s/base/external-secret.yaml`. |
 | `observability_install_metrics_server`, `observability_install_fluent_bit` | Enable or disable the initial metrics and logging agents. |
-| `gitlab_mode`, `gitlab_url`, `gitlab_external_url`, `gitlab_terraform_dir`, `gitlab_run_terraform` | Use `gitlab_mode: install` to self-host GitLab on the `gitlab` group, or `gitlab_mode: connect` to point Divband at an existing GitLab URL. |
+| `gitlab_mode`, `gitlab_url`, `gitlab_external_url`, `gitlab_terraform_dir`, `gitlab_run_terraform` | Use `gitlab_mode: install` to self-host GitLab on the `gitlab` group, or `gitlab_mode: connect` to point Divband at an existing GitLab URL. The site playbook provisions or connects GitLab before deploying the Divband app so these values are ready for the backend. |
+| `divband_gitlab_url`, `divband_gitlab_token` / `divband_gitlab_access_token`, `divband_gitlab_namespace_id` | Backend GitLab connection settings. Store credentials and optional namespace IDs in Ansible Vault or an external secret source; the `divband_app` role renders them into the `divband-backend-env` Kubernetes Secret and injects them with `secretKeyRef`. |
 | `gitlab_runner_project_key` | Required per runner host unless `gitlab_runner_token` is supplied from Vault. Use the Terraform project key, for example `acme/marketing`. |
 | `gitlab_runner_token` | Runner authentication token created by GitLab provisioning. Use Vault/platform secrets for normal runs; the role can also read `runner_authentication_tokens` from Terraform outputs when `gitlab_runner_project_key` is set. |
 | `gitlab_runner_tags` | Optional override for runner tags. Leave empty to use the project-specific `divband-*` tag exported by Terraform. |
+
+### Divband backend GitLab secret handoff
+
+The backend receives GitLab connection settings from the `divband-backend-env` Kubernetes Secret, not from literal Deployment environment values. Set `divband_gitlab_url`, exactly one of `divband_gitlab_token` or `divband_gitlab_access_token`, and optional `divband_gitlab_namespace_id` from Ansible Vault variables such as `vault_divband_gitlab_token` and `vault_divband_gitlab_namespace_id`. During `playbooks/site.yml`, GitLab connection/installation and Terraform token preparation run before the `divband_app` play, then the app role renders the Secret and references `GITLAB_URL`, `GITLAB_TOKEN`/`GITLAB_ACCESS_TOKEN`, and `GITLAB_NAMESPACE_ID` through Kubernetes `secretKeyRef` entries.
 
 ### GitLab runner token handoff
 

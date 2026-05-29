@@ -64,9 +64,13 @@ all:
     divband_object_storage_access_key_id: REPLACE_WITH_OBJECT_STORAGE_ACCESS_KEY_ID
     divband_object_storage_secret_access_key: REPLACE_WITH_OBJECT_STORAGE_SECRET_ACCESS_KEY
     divband_database_url: REPLACE_WITH_PRODUCTION_DATABASE_URL
-    divband_gitlab_token: REPLACE_WITH_GITLAB_TOKEN
+    divband_gitlab_url: "{{ gitlab_url }}"
+    # Store GitLab credentials in Ansible Vault or your external secret source.
+    divband_gitlab_token: "{{ vault_divband_gitlab_token | default('') }}"
     # Alternatively set divband_gitlab_access_token instead of divband_gitlab_token.
-    divband_gitlab_access_token: ""
+    divband_gitlab_access_token: "{{ vault_divband_gitlab_access_token | default('') }}"
+    # Optional GitLab group/project namespace ID for backend scoping.
+    divband_gitlab_namespace_id: "{{ vault_divband_gitlab_namespace_id | default('') }}"
     divband_token_hash_pepper: REPLACE_WITH_RANDOM_TOKEN_HASH_PEPPER
 
   children:
