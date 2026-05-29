@@ -1,17 +1,20 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: web
+  name: public-web
   namespace: project-REPLACE_WITH_SLUG
   labels:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/project-slug: REPLACE_WITH_SLUG
 spec:
   parentRefs:
-    - name: public-gateway
-      namespace: ingress-system
+    - name: REPLACE_WITH_GATEWAY_NAME
+      namespace: REPLACE_WITH_GATEWAY_NAMESPACE
+      sectionName: https
   hostnames:
     - REPLACE_WITH_SLUG.divband.ir
+    - REPLACE_WITH_VERIFIED_CUSTOM_DOMAIN
   rules:
     - backendRefs:
-        - name: web
-          port: 80
+        - name: REPLACE_WITH_PUBLIC_SERVICE_NAME
+          port: REPLACE_WITH_PUBLIC_SERVICE_PORT

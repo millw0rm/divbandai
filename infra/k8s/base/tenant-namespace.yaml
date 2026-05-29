@@ -3,46 +3,60 @@ kind: Namespace
 metadata:
   name: project-REPLACE_WITH_SLUG
   labels:
+    app.kubernetes.io/managed-by: divband
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/project-slug: REPLACE_WITH_SLUG
-    divband.io/environment: production
-    divband.io/managed-by: divband
+    divband.io/organization-id: REPLACE_WITH_ORGANIZATION_ID
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/lifecycle-state: active
 ---
 apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: project-quota
   namespace: project-REPLACE_WITH_SLUG
+  labels:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
 spec:
   hard:
-    requests.cpu: '1'
-    requests.memory: 1Gi
-    limits.cpu: '2'
-    limits.memory: 2Gi
-    pods: '10'
-    services: '5'
+    requests.cpu: REPLACE_WITH_QUOTA_REQUESTS_CPU
+    requests.memory: REPLACE_WITH_QUOTA_REQUESTS_MEMORY
+    requests.storage: REPLACE_WITH_QUOTA_REQUESTS_STORAGE
+    limits.cpu: REPLACE_WITH_QUOTA_LIMITS_CPU
+    limits.memory: REPLACE_WITH_QUOTA_LIMITS_MEMORY
+    persistentvolumeclaims: REPLACE_WITH_QUOTA_PVCS
+    pods: REPLACE_WITH_QUOTA_PODS
+    services: REPLACE_WITH_QUOTA_SERVICES
+    services.loadbalancers: '0'
+    services.nodeports: '0'
+    count/ingresses.networking.k8s.io: REPLACE_WITH_QUOTA_INGRESSES
+    count/secrets: REPLACE_WITH_QUOTA_SECRETS
 ---
 apiVersion: v1
 kind: LimitRange
 metadata:
   name: project-limits
   namespace: project-REPLACE_WITH_SLUG
+  labels:
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
 spec:
   limits:
     - type: Container
       default:
-        cpu: 250m
-        memory: 256Mi
+        cpu: REPLACE_WITH_DEFAULT_CPU_LIMIT
+        memory: REPLACE_WITH_DEFAULT_MEMORY_LIMIT
       defaultRequest:
-        cpu: 100m
-        memory: 128Mi
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-  namespace: project-REPLACE_WITH_SLUG
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
+        cpu: REPLACE_WITH_DEFAULT_CPU_REQUEST
+        memory: REPLACE_WITH_DEFAULT_MEMORY_REQUEST
+      max:
+        cpu: REPLACE_WITH_MAX_CPU_LIMIT
+        memory: REPLACE_WITH_MAX_MEMORY_LIMIT
+      min:
+        cpu: REPLACE_WITH_MIN_CPU_REQUEST
+        memory: REPLACE_WITH_MIN_MEMORY_REQUEST
+    - type: PersistentVolumeClaim
+      max:
+        storage: REPLACE_WITH_MAX_PVC_STORAGE
+      min:
+        storage: REPLACE_WITH_MIN_PVC_STORAGE

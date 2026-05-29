@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - tenant-namespace.yaml
+  - network-policy.yaml
+  - rbac.yaml
+  - external-secret.yaml
+  - frontend-deployment.yaml
+  - backend-deployment.yaml
+  - static-site-deployment.yaml
+  - ingress.yaml
+# Use httproute.yaml instead of ingress.yaml when the cluster's Gateway API
+# implementation owns TLS and host attachment at the shared gateway layer.
