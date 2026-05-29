@@ -8,8 +8,8 @@ The control plane has first-class records for:
 - **Organizations/teams**: shared workspaces that own projects and hold organization membership.
 - **Projects**: isolated hosting units that map to one GitLab repository, one Kubernetes namespace, DNS records, deployments, logs, and secrets.
 - **Project memberships**: the source of truth for project-scoped authorization. Every project operation must resolve the caller to a membership before touching downstream systems.
-- **Sessions**: short-lived bearer credentials created by local login or optional OAuth/OIDC login. Sessions track creation, expiry, last use, and revocation.
-- **API tokens**: revocable bearer credentials owned by a user. Tokens can be scoped to a project and an effective project role, and must never be stored in plaintext.
+- **Sessions**: short-lived bearer credentials created by local login or optional OAuth/OIDC login. Only keyed token hashes are persisted; session records track creation, expiry, last use, and revocation.
+- **API tokens**: revocable bearer credentials owned by a user. Tokens can be scoped to a project and an effective project role, and only keyed token hashes are persisted.
 - **OAuth/OIDC identities**: optional external identity links keyed by provider, issuer, and subject.
 - **GitLab identity links**: optional user-to-GitLab links used when a user needs access to generated repositories.
 
@@ -56,7 +56,7 @@ Required checks by integration:
 - **Kubernetes**: require `project:provision_kubernetes` before namespace or RBAC provisioning.
 - **DNS and TLS**: require `domain:manage` before adding a platform subdomain, creating a custom-domain challenge, verifying DNS, or requesting certificates.
 - **Deployments**: require `deployment:trigger` before starting builds or deployments.
-- **Secrets/environment variables**: require `secret:read` for masked reads and `secret:manage` for writes/deletes.
+- **Secrets/environment variables**: require `secret:read` for masked metadata reads or explicit raw-value reveal, and `secret:manage` for writes/deletes.
 - **Logs/status**: require `project:read` before returning project status, deployment details, or logs.
 - **Memberships/API tokens**: require `member:manage` or `token:manage` respectively.
 - **Project archival**: require `project:archive`.
@@ -93,20 +93,29 @@ Instant static hosting is intentionally safe-by-default so agents can publish pr
 - When abuse thresholds are exceeded but content is not yet confirmed malicious, the platform may fall back to a shorter one-hour TTL, disable custom-domain attachment, or require account verification before accepting more publishes.
 
 
-## Sessions and API tokens
+## MVP authentication model
+
+The MVP supports local email/password accounts, bearer sessions, optional OAuth/OIDC identity links, project-scoped API tokens, and GitLab identity links. Local passwords are hashed with Node's `scrypt` password-hashing primitive using per-password random salts and parameters encoded in the stored hash. Legacy demo hashes are accepted only long enough to verify a login and are rehashed immediately after successful authentication.
 
 Session requirements:
 
-- Bearer sessions expire and can be revoked.
-- Session storage tracks creation time, expiration time, last use, and optional OAuth/OIDC provider metadata.
-- Session validation must reject unknown, expired, or revoked tokens.
+- The API uses an explicit bearer-token policy for the MVP: clients send `Authorization: Bearer <token>` and the backend does not issue JavaScript-readable cookies. If a browser deployment later adopts cookies, they must be `HttpOnly`, `Secure`, `SameSite=Lax` or stricter, and protected by CSRF controls for unsafe methods.
+- Session token secrets are returned once at register/login, then only an HMAC-SHA-256 token hash is stored.
+- Bearer sessions expire after 14 days, can be revoked with `POST /auth/logout` for the current session or `DELETE /auth/sessions/{sessionId}` for another user-owned session, and expired sessions are deleted by authentication-time cleanup plus `POST /auth/sessions/cleanup`.
+- Session storage tracks creation time, expiration time, last use, optional OAuth/OIDC provider metadata, and revocation time.
+- Session validation must reject unknown, expired, or revoked tokens before any project authorization check.
 
-API token requirements:
+API token and linked-token requirements:
 
-- Store only token hashes.
-- Return the token secret only once at creation time.
+- API token secrets are generated as high-entropy opaque bearer strings and returned only once at creation time.
+- Store only keyed hashes for API tokens and GitLab access tokens; never persist the raw bearer string.
 - Support project scoping, effective project role scoping, expiration, revocation, and last-used tracking.
 - Apply the lower/effective scoped authorization at request time before project access.
+
+Local-development exceptions:
+
+- `DIVBAND_TOKEN_HASH_PEPPER` should be set in shared or production environments. If it is absent, the backend uses a documented local-development pepper so a single-process demo can run without extra setup.
+- Local development may use bearer tokens over `http://localhost`; non-local deployments must terminate TLS before accepting bearer credentials.
 
 ## OAuth/OIDC integration
 
@@ -145,13 +154,21 @@ Required controls:
 
 Secrets must not be committed to Git or exposed through dashboard responses, logs, AI context, or build output.
 
+Project environment variable requirements:
+
+- Project environment variables are not stored on the in-memory `Project` object. The control plane stores encrypted records keyed by project ID and variable key.
+- The MVP encrypted store uses AES-256-GCM before persistence. `DIVBAND_SECRET_ENCRYPTION_KEY` must be configured in shared or production environments; local development falls back to a documented static development key only to keep the demo runnable.
+- `GET /projects/{projectId}/environment-variables` returns masked values only, even for callers with `secret:read`.
+- Raw values may be returned only by the explicit reveal flow `GET /projects/{projectId}/environment-variables/{key}/value` with `secret:read` authorization and `X-Divband-Secret-Read: reveal`; every reveal is audited.
+- Writes and deletes require `secret:manage`; write responses return masked values only.
+
 Secret-handling requirements:
 
-- Store production secrets in a secret manager or External Secrets provider.
-- Synchronize only the minimum required secret values into project namespaces.
+- Store production secrets in a secret manager or External Secrets provider when available; the encrypted MVP store is the minimum acceptable persistent fallback.
+- Synchronize only the minimum required secret values into project namespaces or GitLab CI/CD variables.
 - Scope CI/CD variables to the owning GitLab project and environment.
 - Redact secrets before sending logs, diffs, or repository context to AI systems.
-- Rotate deploy tokens, runner credentials, API tokens, session secrets, and custom-domain verification tokens on compromise or project transfer.
+- Rotate deploy tokens, runner credentials, API tokens, session secrets, secret-encryption keys, and custom-domain verification tokens on compromise or project transfer.
 
 ## RBAC
 

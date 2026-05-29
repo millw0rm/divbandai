@@ -39,7 +39,8 @@ export interface ProjectMembership {
 }
 
 export interface AuthSession {
-  token: string;
+  id: string;
+  tokenHash: string;
   userId: string;
   createdAt: string;
   expiresAt: string;
@@ -128,6 +129,18 @@ export interface EnvironmentVariable {
   updatedAt: string;
 }
 
+export interface ProjectEnvironmentSecret {
+  projectId: string;
+  key: string;
+  encryptedValue: string;
+  iv: string;
+  authTag: string;
+  algorithm: 'aes-256-gcm';
+  protected: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Project {
   id: string;
   organizationId: string;
@@ -144,7 +157,6 @@ export interface Project {
   platformSubdomainAttached: boolean;
   domains: ProjectDomain[];
   deployments: Deployment[];
-  environmentVariables: EnvironmentVariable[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;

@@ -718,6 +718,32 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/EnvironmentVariable'
+  /projects/{projectId}/environment-variables/{key}/value:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: X-Divband-Secret-Read
+        in: header
+        required: true
+        schema:
+          type: string
+          enum: [reveal]
+    get:
+      summary: Explicitly reveal one project environment variable value
+      responses:
+        '200':
+          description: Environment variable revealed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  environmentVariable:
+                    $ref: '#/components/schemas/EnvironmentVariable'
   /projects/{projectId}/environment-variables/{key}:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -1328,6 +1354,12 @@ components:
           $ref: '#/components/schemas/User'
         session:
           $ref: '#/components/schemas/AuthSession'
+        token:
+          type: string
+          description: One-time bearer token secret; only a hash is persisted.
+        tokenType:
+          type: string
+          enum: [Bearer]
     User:
       type: object
       properties:
@@ -1343,7 +1375,7 @@ components:
     AuthSession:
       type: object
       properties:
-        token:
+        id:
           type: string
         userId:
           type: string
@@ -1565,10 +1597,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Deployment'
-        environmentVariables:
-          type: array
-          items:
-            $ref: '#/components/schemas/EnvironmentVariable'
         createdAt:
           type: string
           format: date-time

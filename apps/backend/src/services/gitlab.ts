@@ -1,4 +1,4 @@
-import type { AiChangeRequest, AiPatchProposal, Project } from '../models.ts';
+import type { AiChangeRequest, AiPatchProposal, EnvironmentVariable, Project } from '../models.ts';
 
 export interface GitLabRepository {
   path: string;
@@ -74,12 +74,12 @@ export class GitLabService {
     this.defaultBranch = env.GITLAB_DEFAULT_BRANCH?.trim() || 'main';
   }
 
-  async createRepository(project: Project): Promise<GitLabRepository> {
+  async createRepository(project: Project, environmentVariables: EnvironmentVariable[] = []): Promise<GitLabRepository> {
     const existing = await this.findProject(project.gitlabPath);
     const gitlabProject = existing ?? await this.createProject(project);
     this.projectIdsByPath.set(project.gitlabPath, gitlabProject.id);
 
-    await this.configureProjectVariables(project);
+    await this.configureProjectVariables(project, environmentVariables);
     await this.protectBranch(gitlabProject.id, gitlabProject.default_branch ?? this.defaultBranch);
     await this.createDeploymentCredential(gitlabProject.id, project);
 
@@ -189,14 +189,14 @@ export class GitLabService {
     }
   }
 
-  private async configureProjectVariables(project: Project): Promise<void> {
+  private async configureProjectVariables(project: Project, environmentVariables: EnvironmentVariable[]): Promise<void> {
     const projectId = await this.projectId(project);
     const variables = [
       { key: 'DIVBAND_PROJECT_ID', value: project.id, protected: false, masked: false },
       { key: 'DIVBAND_PROJECT_SLUG', value: project.slug, protected: false, masked: false },
       { key: 'DIVBAND_NAMESPACE', value: project.namespace, protected: false, masked: false },
       { key: 'DIVBAND_PLATFORM_HOSTNAME', value: project.platformHostname, protected: false, masked: false },
-      ...project.environmentVariables.map((variable) => ({
+      ...environmentVariables.map((variable) => ({
         key: variable.key,
         value: variable.value,
         protected: variable.protected,

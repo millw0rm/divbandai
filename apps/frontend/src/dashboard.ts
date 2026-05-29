@@ -44,7 +44,7 @@ export interface AuthUser {
 }
 
 export interface AuthSession {
-  token: string;
+  id: string;
   userId: string;
   expiresAt: string;
 }
@@ -52,6 +52,8 @@ export interface AuthSession {
 export interface AuthResponse {
   user: AuthUser;
   session: AuthSession;
+  token: string;
+  tokenType: 'Bearer';
 }
 
 export interface ProjectDomain {
@@ -107,7 +109,6 @@ export interface Project {
   platformSubdomainAttached: boolean;
   domains: ProjectDomain[];
   deployments: Deployment[];
-  environmentVariables: EnvironmentVariable[];
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
@@ -606,7 +607,7 @@ export class DashboardController {
     this.storage = options.storage ?? globalThis.localStorage;
     const storedToken = this.storage?.getItem('divband.dashboard.token') ?? undefined;
     this.api = new DivbandApiClient({ baseUrl: options.baseUrl, token: options.token ?? storedToken, fetch: options.fetch });
-    this.state = createInitialDashboardState({ session: storedToken ? { token: storedToken, userId: 'stored-session', expiresAt: '' } : undefined, ...options.initialState });
+    this.state = createInitialDashboardState({ session: storedToken ? { id: 'stored-session', userId: 'stored-session', expiresAt: '' } : undefined, ...options.initialState });
   }
 
   async start(): Promise<void> {
@@ -754,8 +755,8 @@ export class DashboardController {
   }
 
   private async applyAuth(response: AuthResponse): Promise<void> {
-    this.api.setToken(response.session.token);
-    this.storage?.setItem('divband.dashboard.token', response.session.token);
+    this.api.setToken(response.token);
+    this.storage?.setItem('divband.dashboard.token', response.token);
     this.state = { ...this.state, user: response.user, session: response.session };
   }
 

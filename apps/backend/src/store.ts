@@ -8,6 +8,7 @@ import type {
   Organization,
   OrganizationMembership,
   Project,
+  ProjectEnvironmentSecret,
   ProjectMembership,
   Publish,
   PublishedFile,
@@ -26,6 +27,7 @@ export interface BackendStore {
   organizations: Map<string, Organization>;
   organizationMemberships: Map<string, OrganizationMembership>;
   projects: Map<string, Project>;
+  projectEnvironmentSecrets: Map<string, ProjectEnvironmentSecret>;
   projectMemberships: Map<string, ProjectMembership>;
   oauthIdentities: Map<string, OAuthIdentity>;
   gitlabIdentityLinks: Map<string, GitLabIdentityLink>;
@@ -47,6 +49,7 @@ export interface BackendStoreSnapshot {
   organizations: Organization[];
   organizationMemberships: OrganizationMembership[];
   projects: Project[];
+  projectEnvironmentSecrets: ProjectEnvironmentSecret[];
   projectMemberships: ProjectMembership[];
   oauthIdentities: OAuthIdentity[];
   gitlabIdentityLinks: GitLabIdentityLink[];
@@ -74,6 +77,7 @@ export function createBackendStore(): BackendStore {
     organizations: new Map(),
     organizationMemberships: new Map(),
     projects: new Map(),
+    projectEnvironmentSecrets: new Map(),
     projectMemberships: new Map(),
     oauthIdentities: new Map(),
     gitlabIdentityLinks: new Map(),
@@ -97,6 +101,7 @@ export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot 
     organizations: [...store.organizations.values()],
     organizationMemberships: [...store.organizationMemberships.values()],
     projects: [...store.projects.values()],
+    projectEnvironmentSecrets: [...store.projectEnvironmentSecrets.values()],
     projectMemberships: [...store.projectMemberships.values()],
     oauthIdentities: [...store.oauthIdentities.values()],
     gitlabIdentityLinks: [...store.gitlabIdentityLinks.values()],
@@ -114,11 +119,16 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.users = mapById(snapshot.users);
   store.usersByEmail = new Map(snapshot.usersByEmail);
   store.passwordHashesByUserId = new Map(snapshot.passwordHashesByUserId);
-  store.sessions = new Map(snapshot.sessions.map((session) => [session.token, session]));
+  store.sessions = new Map((snapshot.sessions ?? []).map((session) => [session.tokenHash, session]));
   store.apiTokens = mapById(snapshot.apiTokens);
   store.organizations = mapById(snapshot.organizations);
   store.organizationMemberships = mapById(snapshot.organizationMemberships);
-  store.projects = mapById(snapshot.projects);
+  store.projects = mapById(snapshot.projects.map((project) => {
+    const legacyProject = project as Project & { environmentVariables?: Array<{ key: string; value: string; protected: boolean; updatedAt: string }> };
+    const { environmentVariables: _environmentVariables, ...safeProject } = legacyProject;
+    return safeProject;
+  }));
+  store.projectEnvironmentSecrets = new Map((snapshot.projectEnvironmentSecrets ?? []).map((secret) => [`${secret.projectId}:${secret.key}`, secret]));
   store.projectMemberships = mapById(snapshot.projectMemberships);
   store.oauthIdentities = mapById(snapshot.oauthIdentities);
   store.gitlabIdentityLinks = mapById(snapshot.gitlabIdentityLinks);
