@@ -67,8 +67,8 @@ Advanced customers can delegate a zone or sub-zone to Divband with `NS` records
 when they want Divband to manage DNS records on their behalf:
 
 ```text
-project2.com.  NS  ns1.divband.ir.
-project2.com.  NS  ns2.divband.ir.
+project2.com.  NS  ns1.managed-dns.example.
+project2.com.  NS  ns2.managed-dns.example.
 ```
 
 Delegated DNS allows Divband to create verification, application, wildcard, and
@@ -76,6 +76,15 @@ ACME DNS-01 records automatically. It should be optional because it transfers
 operational responsibility for the delegated zone to Divband. The backend must
 store whether Divband manages the entire zone, only a sub-zone, or no DNS for a
 custom domain.
+
+**Architecture decision:** Initial delegated customer zones will use a managed
+DNS provider. Self-hosted authoritative DNS, including Divband-operated
+nameservers such as `ns1.divband.ir` and `ns2.divband.ir`, is not a goal for the
+initial launch. Vanity nameservers can be evaluated later if customer experience
+or branding requirements justify them. This choice accelerates launch while
+relying on provider-backed availability, DNSSEC support, record replication, and
+abuse controls. It also means delegated DNS data/API model work and provider
+adapter implementation can proceed against the managed-provider assumption.
 
 ## Backend domain model
 
