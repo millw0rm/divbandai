@@ -1,0 +1,16 @@
+{
+  "name": "divband",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo for the divband multi-tenant website hosting platform.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit --project tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
