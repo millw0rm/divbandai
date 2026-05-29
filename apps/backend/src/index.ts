@@ -9,3 +9,5 @@ export { DeploymentStatusService } from './services/deployment-status';
 export { DnsVerificationService } from './services/dns-verification';
 export { GitLabService } from './services/gitlab';
 export { KubernetesService } from './services/kubernetes';
+export { StaticServingService } from './services/static-serving';
+export type { StaticServeRequest, StaticServeResolution, StaticServingOptions } from './services/static-serving';

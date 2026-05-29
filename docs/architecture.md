@@ -33,12 +33,29 @@ divband/
 
 ## Request flow
 
+### GitLab/Kubernetes workload path
+
 1. A browser requests `project1.divband.ir` or `project2.com`.
 2. DNS points the hostname to the divband ingress or Gateway API layer.
 3. The ingress routes by HTTP `Host` header after TLS termination.
 4. The route selects the service in the matching project namespace.
 5. The service serves the deployed version for that project.
 6. Logs, metrics, and audit events are tagged with the project ID and namespace.
+
+### Instant static serving path
+
+1. A browser requests `{slug}.divband.ir` or an assigned custom domain for an instant static site.
+2. DNS points the hostname to the divband static serving edge rather than a project namespace ingress.
+3. The serving layer resolves the HTTP `Host` header to a published static site record, not a Kubernetes workload.
+4. Routing metadata maps `slug -> currentVersionId` so the active version can change atomically without moving files.
+5. The request path maps to an object storage key using `sites/{slug}/versions/{versionId}/{path}`.
+6. The static serving layer applies file resolution rules before reading object storage:
+   - `/` serves `index.html`.
+   - Direct file paths serve exact objects.
+   - Subdirectories prefer their own `index.html`.
+   - Unknown paths optionally fall back to `index.html` when `spaMode` is enabled.
+   - Missing paths return a generated directory listing or a `404` response depending on site configuration.
+7. Logs, metrics, and audit/abuse events are tagged with the static site ID, slug, host, and version ID.
 
 ## Provisioning flow
 

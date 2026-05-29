@@ -68,3 +68,31 @@ Rollback is intentionally image-based rather than branch-based:
 5. CI reports `succeeded` or `failed` back to the backend so the dashboard shows the rollback result.
 
 This keeps emergency recovery independent of mutable branch heads and allows the dashboard to explain exactly which release was restored.
+
+
+## Instant static site publish and serving path
+
+Instant static sites use a separate deployment and request path from GitLab-driven Kubernetes workloads. They are intended for prebuilt static output, agent-created previews, documentation, and SPAs that do not require server-side execution.
+
+### Publish flow
+
+1. A client creates or updates a static publish session through the backend publish API with a file manifest, checksums, content types, and optional `spaMode`.
+2. The backend allocates an immutable version ID and upload plan without creating a GitLab repository, container image, Kubernetes namespace, service, or ingress route.
+3. The client uploads files to object storage using scoped upload URLs. Final object keys use the production shape `sites/{slug}/versions/{versionId}/{path}` after finalize.
+4. Finalize validates the uploaded files and atomically updates routing metadata from `slug -> currentVersionId`.
+5. Previously finalized versions remain immutable so rollback can be modeled as repointing `currentVersionId` instead of rebuilding or redeploying a workload.
+
+### Request path
+
+1. A request arrives for `{slug}.divband.ir` or an assigned custom domain.
+2. The static serving edge resolves the `Host` header to a published static site record, not a Kubernetes workload.
+3. Routing metadata maps `slug -> currentVersionId`.
+4. The normalized URL path maps to an object storage key such as `sites/{slug}/versions/{versionId}/{path}`.
+5. Serving rules are deterministic:
+   - `/` serves `index.html`.
+   - Direct file paths serve exact objects.
+   - Subdirectories prefer `index.html` inside that directory.
+   - Unknown paths optionally fall back to `index.html` when `spaMode` is enabled.
+   - Missing paths return a generated directory listing or `404` depending on configuration.
+
+The current backend includes static-serving scaffolding for host resolution, version lookup, object-key construction, SPA fallback, and optional directory listings. Production can run that logic in the backend, a CDN worker, or a dedicated edge worker as long as it preserves the same metadata contract and object key layout.
