@@ -184,6 +184,17 @@ export interface ApiClientOptions {
   fetch?: typeof fetch;
 }
 
+export interface DashboardControllerOptions extends ApiClientOptions {
+  root: HTMLElement;
+  initialState?: Partial<DashboardState>;
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+}
+
+export interface DashboardActionResult {
+  state: DashboardState;
+  html: string;
+}
+
 export const dashboardSections: DashboardSection[] = [
   {
     id: 'projects',
@@ -498,6 +509,13 @@ export class DivbandApiClient {
     return response.changeRequest;
   }
 
+  async getAiChangeRequest(projectId: string, changeRequestId: string): Promise<AiChangeRequest> {
+    const response = await this.request<{ changeRequest: AiChangeRequest }>(
+      `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}`,
+    );
+    return response.changeRequest;
+  }
+
   async triggerAiCi(projectId: string, changeRequestId: string): Promise<AiChangeRequest> {
     const response = await this.request<{ changeRequest: AiChangeRequest }>(
       `/projects/${encodeURIComponent(projectId)}/ai/change-requests/${encodeURIComponent(changeRequestId)}/ci`,
@@ -578,6 +596,187 @@ export function selectProject(state: DashboardState): Project | undefined {
   return state.projects.find((project) => project.id === state.selectedProjectId) ?? state.projects[0];
 }
 
+
+export class DashboardController {
+  readonly api: DivbandApiClient;
+  state: DashboardState;
+  private readonly storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+  constructor(private readonly options: DashboardControllerOptions) {
+    this.storage = options.storage ?? globalThis.localStorage;
+    const storedToken = this.storage?.getItem('divband.dashboard.token') ?? undefined;
+    this.api = new DivbandApiClient({ baseUrl: options.baseUrl, token: options.token ?? storedToken, fetch: options.fetch });
+    this.state = createInitialDashboardState({ session: storedToken ? { token: storedToken, userId: 'stored-session', expiresAt: '' } : undefined, ...options.initialState });
+  }
+
+  async start(): Promise<void> {
+    this.options.root.addEventListener('submit', (event) => void this.handleSubmit(event));
+    this.options.root.addEventListener('click', (event) => void this.handleClick(event));
+    globalThis.addEventListener?.('hashchange', () => void this.navigateFromHash());
+    await this.navigateFromHash();
+  }
+
+  async navigate(page: DashboardPageId, selectedProjectId = this.state.selectedProjectId): Promise<DashboardActionResult> {
+    this.state = { ...this.state, currentPage: page, selectedProjectId, loading: true, error: undefined };
+    this.render();
+    try {
+      await this.loadPageData(page, selectedProjectId);
+      this.state = { ...this.state, loading: false };
+    } catch (error) {
+      this.state = { ...this.state, loading: false, error: error instanceof Error ? error.message : 'Dashboard request failed.' };
+    }
+    return { state: this.state, html: this.render() };
+  }
+
+  render(): string {
+    const html = renderDashboard(this.state);
+    this.options.root.innerHTML = html;
+    return html;
+  }
+
+  private async navigateFromHash(): Promise<DashboardActionResult> {
+    const page = pageFromHash(globalThis.location?.hash) ?? this.state.currentPage;
+    return this.navigate(page);
+  }
+
+  private async loadPageData(page: DashboardPageId, selectedProjectId?: string): Promise<void> {
+    if (!this.state.session && page !== 'sign-in' && page !== 'sign-up') {
+      this.state = { ...this.state, currentPage: 'sign-in' };
+      return;
+    }
+
+    if (page === 'project-list' || page === 'create-project') {
+      this.state = { ...this.state, projects: await this.api.listProjects() };
+      return;
+    }
+
+    const project = selectedProjectId ? await this.api.getProject(selectedProjectId) : selectProject(this.state);
+    if (!project) {
+      this.state = { ...this.state, projects: await this.api.listProjects() };
+      return;
+    }
+
+    const projects = upsertById(this.state.projects, project);
+    const statusSummary = await this.api.getProjectStatus(project.id);
+    const baseState = { ...this.state, projects, selectedProjectId: project.id, statusSummary };
+
+    if (page === 'environment-variables') {
+      this.state = { ...baseState, environmentVariables: await this.api.listEnvironmentVariables(project.id) };
+    } else if (page === 'logs-build-history') {
+      this.state = { ...baseState, logs: await this.api.getLogs(project.id) };
+    } else if (page === 'ai-assistant') {
+      this.state = { ...baseState, aiChangeRequests: await this.api.listAiChangeRequests(project.id) };
+    } else {
+      this.state = baseState;
+    }
+  }
+
+  private async handleSubmit(event: Event): Promise<void> {
+    const form = event.target instanceof HTMLFormElement ? event.target : undefined;
+    if (!form?.dataset.action) return;
+    event.preventDefault();
+    await this.runAction(async () => {
+      const data = new FormData(form);
+      switch (form.dataset.action) {
+        case 'sign-in':
+          await this.applyAuth(await this.api.login(requiredCredentials(data)));
+          return this.navigate('project-list');
+        case 'sign-up':
+          await this.applyAuth(await this.api.register({ ...requiredCredentials(data), name: String(data.get('name') ?? '') }));
+          return this.navigate('project-list');
+        case 'create-project': {
+          const project = await this.api.createProject({ name: String(data.get('name') ?? ''), slug: optionalString(data.get('slug')) });
+          this.state = { ...this.state, projects: upsertById(this.state.projects, project), selectedProjectId: project.id };
+          return this.navigate('project-overview', project.id);
+        }
+        case 'trigger-deployment':
+          await this.api.triggerDeployment(requiredProjectId(form), { gitRef: optionalString(data.get('gitRef')) });
+          return this.navigate('deployment-status', requiredProjectId(form));
+        case 'add-domain':
+          await this.api.addDomain(requiredProjectId(form), String(data.get('hostname') ?? ''));
+          return this.navigate('domain-management', requiredProjectId(form));
+        case 'save-environment-variable':
+          await this.api.saveEnvironmentVariables(requiredSelectedProjectId(this.state), [{ key: String(data.get('key') ?? ''), value: String(data.get('value') ?? ''), protected: data.get('protected') === 'on' }]);
+          return this.navigate('environment-variables', requiredSelectedProjectId(this.state));
+        case 'assistant-request': {
+          const message = await this.api.requestAssistantChange({ projectId: requiredProjectId(form), prompt: String(data.get('prompt') ?? ''), targetBranch: optionalString(data.get('targetBranch')) });
+          this.state = { ...this.state, assistantMessages: [...this.state.assistantMessages, message] };
+          return this.navigate('ai-assistant', requiredProjectId(form));
+        }
+      }
+      return undefined;
+    });
+  }
+
+  private async handleClick(event: Event): Promise<void> {
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-action], [data-project-id]') : undefined;
+    if (!target) return;
+    const action = target.dataset.action;
+    const projectId = target.dataset.projectId;
+    if (!action && projectId) {
+      this.state = { ...this.state, selectedProjectId: projectId };
+      return;
+    }
+    if (!action) return;
+    event.preventDefault();
+    await this.runAction(async () => {
+      switch (action) {
+        case 'provision-gitlab':
+          await this.api.provisionGitLabRepository(requiredProjectId(target));
+          return this.navigate('gitlab-repository-status', requiredProjectId(target));
+        case 'provision-namespace':
+          await this.api.provisionNamespace(requiredProjectId(target));
+          return this.navigate('project-overview', requiredProjectId(target));
+        case 'attach-platform-subdomain':
+          await this.api.attachPlatformSubdomain(requiredProjectId(target));
+          return this.navigate('domain-management', requiredProjectId(target));
+        case 'verify-domain':
+          await this.api.verifyDomain(requiredProjectId(target), requiredDataset(target, 'domainId'));
+          return this.navigate('domain-management', requiredProjectId(target));
+        case 'ai-attach-context':
+          await this.api.attachAiContext(requiredProjectId(target), requiredDataset(target, 'changeRequestId'), { summary: 'Dashboard attached current project metadata.', files: ['README.md'] });
+          return this.navigate('ai-assistant', requiredProjectId(target));
+        case 'ai-generate-patch':
+          await this.api.generateAiPatch(requiredProjectId(target), requiredDataset(target, 'changeRequestId'));
+          return this.navigate('ai-assistant', requiredProjectId(target));
+        case 'ai-create-branch':
+          await this.api.createAiBranch(requiredProjectId(target), requiredDataset(target, 'changeRequestId'), target.dataset.confirmApply === 'true');
+          return this.navigate('ai-assistant', requiredProjectId(target));
+        case 'ai-open-merge-request':
+          await this.api.openAiMergeRequest(requiredProjectId(target), requiredDataset(target, 'changeRequestId'));
+          return this.navigate('ai-assistant', requiredProjectId(target));
+        case 'ai-trigger-ci':
+          await this.api.triggerAiCi(requiredProjectId(target), requiredDataset(target, 'changeRequestId'));
+          return this.navigate('ai-assistant', requiredProjectId(target));
+      }
+      return undefined;
+    });
+  }
+
+  private async applyAuth(response: AuthResponse): Promise<void> {
+    this.api.setToken(response.session.token);
+    this.storage?.setItem('divband.dashboard.token', response.session.token);
+    this.state = { ...this.state, user: response.user, session: response.session };
+  }
+
+  private async runAction(action: () => Promise<DashboardActionResult | undefined>): Promise<void> {
+    this.state = { ...this.state, loading: true, error: undefined };
+    this.render();
+    try {
+      await action();
+    } catch (error) {
+      this.state = { ...this.state, loading: false, error: error instanceof Error ? error.message : 'Dashboard action failed.' };
+      this.render();
+    }
+  }
+}
+
+export function mountDashboard(options: DashboardControllerOptions): DashboardController {
+  const controller = new DashboardController(options);
+  void controller.start();
+  return controller;
+}
+
 export function renderDashboard(state: DashboardState): string {
   const selectedProject = selectProject(state);
   return `
@@ -586,6 +785,10 @@ export function renderDashboard(state: DashboardState): string {
         <h1>divband</h1>
         <p>Multi-tenant hosting dashboard</p>
         ${renderNavigation(state, selectedProject)}
+        <section class="lifecycle-legend">
+          <h2>Lifecycle states</h2>
+          ${renderLifecycleLegend()}
+        </section>
       </aside>
       <section class="dashboard-content">
         ${state.error ? `<div class="alert alert-error">${escapeHtml(state.error)}</div>` : ''}
@@ -620,9 +823,9 @@ function renderCurrentPage(state: DashboardState, selectedProject?: Project): st
     case 'domain-management':
       return renderDomainManagementPage(selectedProject);
     case 'environment-variables':
-      return renderEnvironmentVariablesPage(state.environmentVariables);
+      return renderEnvironmentVariablesPage(selectedProject, state.environmentVariables);
     case 'logs-build-history':
-      return renderLogsPage(state.logs);
+      return renderLogsPage(selectedProject, state.logs);
     case 'ai-assistant':
       return renderAssistantPage(selectedProject, state.assistantMessages, state.aiChangeRequests);
     case 'project-list':
@@ -710,7 +913,14 @@ function renderProjectOverviewPage(project?: Project, summary?: ProjectStatusSum
         <div><dt>Namespace</dt><dd>${escapeHtml(project.namespace)}</dd></div>
         <div><dt>Platform hostname</dt><dd>${escapeHtml(project.platformHostname)}</dd></div>
         <div><dt>Runner tag</dt><dd>${escapeHtml(project.runnerTag)}</dd></div>
+        <div><dt>Active domains</dt><dd>${escapeHtml((summary?.activeDomains ?? project.domains.filter((domain) => domain.verified).map((domain) => domain.hostname)).join(', ') || 'None')}</dd></div>
+        <div><dt>Latest deployment</dt><dd>${escapeHtml(summary?.latestDeployment?.state ?? project.deployments.at(-1)?.state ?? 'None')}</dd></div>
       </dl>
+      <div class="quick-actions">
+        <button data-action="provision-gitlab" data-project-id="${escapeHtml(project.id)}">Provision repository</button>
+        <button data-action="provision-namespace" data-project-id="${escapeHtml(project.id)}">Provision namespace</button>
+        <a class="button" href="#deployment-status">Open deployments</a>
+      </div>
     </article>`;
 }
 
@@ -783,7 +993,11 @@ function renderDomainManagementPage(project?: Project): string {
     </article>`;
 }
 
-function renderEnvironmentVariablesPage(variables: EnvironmentVariable[]): string {
+function renderEnvironmentVariablesPage(project: Project | undefined, variables: EnvironmentVariable[]): string {
+  if (!project) {
+    return renderEmptyProjectNotice();
+  }
+
   const rows = variables.length
     ? variables.map((variable) => `
       <tr>
@@ -797,7 +1011,8 @@ function renderEnvironmentVariablesPage(variables: EnvironmentVariable[]): strin
   return `
     <article class="card">
       <h2>Environment variables</h2>
-      <form data-action="save-environment-variable">
+      <p>Loaded from <code>GET /projects/{projectId}/environment-variables</code>; saved with <code>PUT /projects/{projectId}/environment-variables</code>.</p>
+      <form data-action="save-environment-variable" data-project-id="${escapeHtml(project.id)}">
         <label>Key <input name="key" placeholder="API_TOKEN" required></label>
         <label>Value <input name="value" required></label>
         <label><input name="protected" type="checkbox"> Protected</label>
@@ -810,7 +1025,11 @@ function renderEnvironmentVariablesPage(variables: EnvironmentVariable[]): strin
     </article>`;
 }
 
-function renderLogsPage(logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>): string {
+function renderLogsPage(project: Project | undefined, logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>): string {
+  if (!project) {
+    return renderEmptyProjectNotice();
+  }
+
   const blocks = logs.length
     ? logs.map((deployment) => `
       <section class="log-block">
@@ -822,7 +1041,7 @@ function renderLogsPage(logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>):
   return `
     <article class="card">
       <h2>Logs and build history</h2>
-      <p>Loaded from <code>GET /projects/{projectId}/logs</code>.</p>
+      <p>Loaded from <code>GET /projects/{projectId}/logs</code> for <strong>${escapeHtml(project.name)}</strong>.</p>
       ${blocks}
     </article>`;
 }
@@ -882,10 +1101,11 @@ function renderAssistantPage(project: Project | undefined, messages: AssistantMe
 
 function renderLifecycleStepper(currentState: ProjectLifecycleState): string {
   const activeIndex = lifecycleStates.findIndex((state) => state.id === currentState);
+  const isFailure = currentState === 'failed';
   return `
-    <ol class="lifecycle-stepper">
+    <ol class="lifecycle-stepper lifecycle-stepper-${escapeHtml(currentState)}">
       ${lifecycleStates.map((state, index) => `
-        <li class="${index <= activeIndex ? 'complete' : ''} ${state.id === currentState ? 'current' : ''}">
+        <li class="${!isFailure && index < activeIndex ? 'complete' : ''} ${state.id === currentState ? 'current' : ''}">
           <strong>${escapeHtml(state.label)}</strong>
           <span>${escapeHtml(state.description)}</span>
         </li>`).join('')}
@@ -899,6 +1119,50 @@ function renderEmptyProjectNotice(): string {
       <p>Create or select a project before opening this page.</p>
       <a class="button" href="#project-list">Go to project list</a>
     </article>`;
+}
+
+
+function renderLifecycleLegend(): string {
+  return `<ol>${lifecycleStates.map((state) => `<li><span class="status status-${state.id}">${escapeHtml(state.label)}</span></li>`).join('')}</ol>`;
+}
+
+function pageFromHash(hash?: string): DashboardPageId | undefined {
+  const id = hash?.replace(/^#/, '') as DashboardPageId | undefined;
+  return dashboardPages.some((page) => page.id === id) ? id : undefined;
+}
+
+function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
+  const exists = items.some((existing) => existing.id === item.id);
+  return exists ? items.map((existing) => existing.id === item.id ? item : existing) : [...items, item];
+}
+
+function requiredCredentials(data: FormData): { email: string; password: string } {
+  return { email: String(data.get('email') ?? ''), password: String(data.get('password') ?? '') };
+}
+
+function optionalString(value: FormDataEntryValue | null): string | undefined {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || undefined;
+}
+
+function requiredProjectId(element: HTMLElement): string {
+  return requiredDataset(element, 'projectId');
+}
+
+function requiredSelectedProjectId(state: DashboardState): string {
+  const projectId = state.selectedProjectId ?? selectProject(state)?.id;
+  if (!projectId) {
+    throw new Error('Select a project first.');
+  }
+  return projectId;
+}
+
+function requiredDataset(element: HTMLElement, key: string): string {
+  const value = element.dataset[key];
+  if (!value) {
+    throw new Error(`Missing ${key} attribute.`);
+  }
+  return value;
 }
 
 function isErrorPayload(payload: unknown): payload is { error: { message: string } } {

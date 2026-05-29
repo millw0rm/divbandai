@@ -1,6 +1,6 @@
 # divband frontend
 
-The frontend package defines a minimal dashboard surface for operating divband projects. It is intentionally framework-neutral so it can be embedded in a static shell, tested with a mocked `fetch`, or adapted to a UI framework later.
+The frontend package defines a minimal, framework-neutral dashboard for operating divband projects. It can be mounted into a static HTML shell, tested with a mocked `fetch`, or adapted to a UI framework later.
 
 Implemented dashboard pages:
 
@@ -17,9 +17,21 @@ Implemented dashboard pages:
 
 `src/dashboard.ts` includes:
 
-- `DivbandApiClient`, a small backend API client for auth, projects, GitLab repository provisioning, namespace provisioning, platform subdomains, custom domains, deployments, environment variables, logs, and assistant change requests.
+- `DivbandApiClient`, a backend API client for auth, projects, GitLab repository provisioning, namespace provisioning, platform subdomains, custom domains, deployments, environment variables, logs, and AI change requests.
+- `DashboardController` and `mountDashboard`, which wire forms/buttons to the backend API, store the auth token, load page-specific project data, and re-render after actions.
 - Dashboard page metadata for routing/navigation.
 - Lifecycle state labels for Created, Repository provisioned, Namespace provisioned, Building, Deployed, Domain pending verification, Domain active, and Failed.
 - HTML render helpers for a minimal dashboard shell and each page.
 
-The backend currently exposes most of the project lifecycle API in `apps/backend/openapi.yaml`. The assistant client method targets `POST /projects/{projectId}/assistant/requests` as the frontend contract for the forthcoming AI workflow endpoint.
+Minimal browser usage:
+
+```ts
+import { mountDashboard } from '@divband/frontend';
+
+mountDashboard({
+  root: document.querySelector('#app')!,
+  baseUrl: '/api',
+});
+```
+
+The controller expects the backend API documented in `apps/backend/openapi.yaml`, including `POST /auth/register`, `POST /auth/login`, project lifecycle routes under `/projects`, and AI change-request routes under `/projects/{projectId}/ai/change-requests`.
