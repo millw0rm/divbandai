@@ -7,6 +7,7 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 ## Product planning
 
 - `docs/product.md` is the product source of truth for vision, MVP scope, user journeys, implementation status, backlog, open decisions, and release readiness. Start there when resuming product planning or prioritization.
+- `docs/local-mvp.md` describes the repeatable smallest useful local run path, including root scripts, mocked dependencies, and a smoke scenario.
 
 ## Repository map
 
