@@ -32,7 +32,7 @@ import { DeploymentStatusService, type DeploymentStatusReport } from './services
 import { DnsVerificationService } from './services/dns-verification.ts';
 import { GitLabService } from './services/gitlab.ts';
 import { KubernetesService } from './services/kubernetes.ts';
-import { PublishingService } from './services/publishing.ts';
+import { PublishingService, type PublishingServiceOptions } from './services/publishing.ts';
 import { createId, maskSecret, normalizeSlug, nowIso } from './utils.ts';
 
 interface RouteMatch {
@@ -61,10 +61,10 @@ export class BackendService {
   private readonly kubernetes = new KubernetesService();
   private readonly publishing: PublishingService;
 
-  constructor(private readonly store: BackendStore = defaultStore) {
+  constructor(private readonly store: BackendStore = defaultStore, publishingOptions: PublishingServiceOptions = {}) {
     this.auth = new AuthService(store);
     this.audit = new AuditLogService(store);
-    this.publishing = new PublishingService(store);
+    this.publishing = new PublishingService(store, publishingOptions);
   }
 
   async handle(request: ApiRequest): Promise<ApiResponse> {
@@ -118,7 +118,7 @@ export class BackendService {
         }
 
         if (method === 'POST' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug, 'finalize')) {
-          const publish = this.publishing.finalize(publishSlug, this.requiredObject(request.body).versionId);
+          const publish = await this.publishing.finalize(publishSlug, this.requiredObject(request.body).versionId);
           if (actor) {
             this.audit.record(actor.user.id, 'publish.finalized', { slug: publish.slug, versionId: publish.liveVersionId ?? '' });
           }

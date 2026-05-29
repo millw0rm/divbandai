@@ -3,12 +3,21 @@ import process from 'node:process';
 import { URL } from 'node:url';
 import { BackendService } from './backend-service.ts';
 import { loadBackendConfig } from './config.ts';
+import { InMemoryObjectStorage } from './services/object-storage.ts';
 import { createRuntimeStore } from './runtime-store.ts';
 import type { ApiRequest, ApiResponse } from './models.ts';
 
 const config = loadBackendConfig();
 const runtimeStore = await createRuntimeStore(config.databaseUrl);
-const backend = new BackendService(runtimeStore.store);
+const objectStorage = new InMemoryObjectStorage({
+  ...config.objectStorage,
+  uploadBaseUrl: `https://${config.uploadDomain}`,
+});
+const backend = new BackendService(runtimeStore.store, {
+  apiBaseUrl: config.apiBaseUrl,
+  publicSiteDomain: config.publicSiteDomain,
+  objectStorage,
+});
 
 const server = createServer(async (nodeRequest, nodeResponse) => {
   try {
