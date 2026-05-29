@@ -568,10 +568,10 @@ export class DivbandApiClient {
     return response.project;
   }
 
-  async addDomain(projectId: string, hostname: string): Promise<ProjectDomain> {
+  async addDomain(projectId: string, input: { hostname: string; dnsMode?: DomainDnsMode }): Promise<ProjectDomain> {
     const response = await this.request<{ domain: ProjectDomain }>(`/projects/${encodeURIComponent(projectId)}/domains`, {
       method: 'POST',
-      body: { hostname },
+      body: input,
     });
     return response.domain;
   }
@@ -918,7 +918,10 @@ export class DashboardController {
           await this.api.triggerDeployment(requiredProjectId(form), { gitRef: optionalString(data.get('gitRef')) });
           return this.navigate('deployment-status', requiredProjectId(form));
         case 'add-domain':
-          await this.api.addDomain(requiredProjectId(form), String(data.get('hostname') ?? ''));
+          await this.api.addDomain(requiredProjectId(form), {
+            hostname: String(data.get('hostname') ?? ''),
+            dnsMode: optionalDomainDnsMode(data.get('dnsMode')),
+          });
           return this.navigate('domain-management', requiredProjectId(form));
         case 'save-environment-variable':
           await this.api.saveEnvironmentVariables(requiredSelectedProjectId(this.state), [{ key: String(data.get('key') ?? ''), value: String(data.get('value') ?? ''), protected: data.get('protected') === 'on' }]);
@@ -952,6 +955,10 @@ export class DashboardController {
     }
     if (!action) return;
     event.preventDefault();
+    if (action === 'copy-to-clipboard') {
+      await copyToClipboard(requiredDataset(target, 'copyValue'));
+      return;
+    }
     await this.runAction(async () => {
       switch (action) {
         case 'provision-gitlab':
@@ -1257,12 +1264,22 @@ function renderDomainManagementPage(project?: Project): string {
   const domains = project.domains.length
     ? project.domains.map((domain) => `
       <li>
-        <strong>${escapeHtml(domain.hostname)}</strong>
-        <span>${domain.verified ? 'Domain active' : `Domain ${domain.status}`}</span>
-        <span>DNS mode: ${escapeHtml(domain.dnsMode)}</span>
-        <span>Delegation: ${escapeHtml(domain.delegationStatus)}</span>
+        <div class="domain-heading">
+          <div>
+            <strong>${escapeHtml(domain.hostname)}</strong>
+            <span>${domain.verified ? 'Domain active' : `Domain ${domain.status}`}</span>
+          </div>
+          <button data-action="verify-domain" data-project-id="${escapeHtml(project.id)}" data-domain-id="${escapeHtml(domain.id)}">Verify DNS</button>
+        </div>
+        <dl class="metadata-grid domain-status-grid">
+          <div><dt>DNS mode</dt><dd>${escapeHtml(domain.dnsMode)}</dd></div>
+          <div><dt>Verification status</dt><dd>${escapeHtml(domain.verificationStatus)}</dd></div>
+          <div><dt>Delegation status</dt><dd>${escapeHtml(domain.delegationStatus)}</dd></div>
+          <div><dt>Certificate status</dt><dd>${escapeHtml(domain.certificateStatus)}</dd></div>
+          <div><dt>Last checked</dt><dd>${escapeHtml(domain.lastCheckedAt ?? 'Not checked yet')}</dd></div>
+        </dl>
+        ${domain.failureReason ? `<div class="alert alert-error domain-failure"><strong>Failure reason:</strong> ${escapeHtml(domain.failureReason)}</div>` : ''}
         ${renderDomainInstructions(domain)}
-        <button data-action="verify-domain" data-project-id="${escapeHtml(project.id)}" data-domain-id="${escapeHtml(domain.id)}">Verify</button>
       </li>`).join('')
     : '<li>No custom domains configured.</li>';
 
@@ -1273,6 +1290,16 @@ function renderDomainManagementPage(project?: Project): string {
       <button data-action="attach-platform-subdomain" data-project-id="${escapeHtml(project.id)}">Attach platform subdomain</button>
       <form data-action="add-domain" data-project-id="${escapeHtml(project.id)}">
         <label>Custom domain <input name="hostname" placeholder="www.example.com" required></label>
+        <label>DNS setup mode
+          <select name="dnsMode">
+            <option value="">Auto-detect from hostname</option>
+            <option value="custom_cname">Custom CNAME</option>
+            <option value="apex">Apex / ALIAS</option>
+            <option value="delegated_full_zone">Delegated full zone</option>
+            <option value="delegated_sub_zone">Delegated sub-zone</option>
+            <option value="none">No DNS automation</option>
+          </select>
+        </label>
         <button type="submit">Add domain</button>
       </form>
       <ul class="domain-list">${domains}</ul>
@@ -1280,8 +1307,76 @@ function renderDomainManagementPage(project?: Project): string {
 }
 
 function renderDomainInstructions(domain: ProjectDomain): string {
+  if (isDelegatedDomain(domain)) {
+    return renderDelegatedDomainInstructions(domain);
+  }
+
   const instructions = domain.dnsInstructions.length ? domain.dnsInstructions : [{ type: 'TXT', name: domain.verificationName, value: domain.verificationValue, purpose: 'ownership_verification', required: true } satisfies DomainDnsInstruction];
-  return `<ul>${instructions.map((instruction) => `<li><code>${escapeHtml(instruction.name)} ${escapeHtml(instruction.type)} ${escapeHtml(Array.isArray(instruction.value) ? instruction.value.join(', ') : instruction.value)}</code><span>${escapeHtml(instruction.purpose)}${instruction.required ? '' : ' (optional)'}</span></li>`).join('')}</ul>`;
+  return `
+    <section class="dns-instructions">
+      <h3>DNS records to publish</h3>
+      <ul>${instructions.map((instruction) => renderDnsInstruction(instruction)).join('')}</ul>
+    </section>`;
+}
+
+function renderDelegatedDomainInstructions(domain: ProjectDomain): string {
+  const nameservers = domain.assignedNameservers;
+  const instructions = domain.dnsInstructions.length ? domain.dnsInstructions : [{ type: 'TXT', name: domain.verificationName, value: domain.verificationValue, purpose: 'ownership_verification', required: true } satisfies DomainDnsInstruction];
+  const nonNsInstructions = instructions.filter((instruction) => instruction.type !== 'NS');
+
+  return `
+    <section class="dns-instructions delegated-dns-instructions">
+      <h3>Delegated DNS launch instructions</h3>
+      <p>At your current DNS registrar or parent-zone provider, delegate <strong>${escapeHtml(domain.hostname)}</strong> to the exact managed-provider nameservers assigned by the backend. Do not use vanity nameservers unless Divband explicitly implements them later.</p>
+      <div class="delegated-nameservers">
+        <h4>Assigned managed-provider nameservers</h4>
+        ${nameservers.length ? `
+          <ul>${nameservers.map((nameserver) => `
+            <li>
+              <code>${escapeHtml(nameserver)}</code>
+              ${renderCopyButton(nameserver, 'Copy')}
+            </li>`).join('')}</ul>
+          ${renderCopyButton(nameservers.join('\n'), 'Copy all nameservers')}
+        ` : '<p class="muted">No managed-provider nameservers have been assigned by the backend yet. Wait for managed DNS zone creation to finish before changing delegation.</p>'}
+      </div>
+      <div class="propagation-guidance">
+        <h4>Propagation guidance</h4>
+        <ul>
+          <li>Replace the NS records for this delegated zone with only the assigned managed-provider nameservers above.</li>
+          <li>DNS propagation commonly takes minutes but can take up to 24–48 hours depending on registrar, parent-zone TTLs, and resolver cache.</li>
+          <li>Use <strong>Verify DNS</strong> after updating delegation. Verification checks that public DNS points at the assigned nameserver set and then validates ownership.</li>
+        </ul>
+      </div>
+      <dl class="metadata-grid domain-status-grid">
+        <div><dt>Delegation</dt><dd>${escapeHtml(domain.delegationStatus)}</dd></div>
+        <div><dt>Ownership verification</dt><dd>${escapeHtml(domain.verificationStatus)}</dd></div>
+        <div><dt>Domain status</dt><dd>${escapeHtml(domain.status)}</dd></div>
+        <div><dt>Last checked</dt><dd>${escapeHtml(domain.lastCheckedAt ?? 'Not checked yet')}</dd></div>
+      </dl>
+      ${domain.failureReason ? `<div class="alert alert-error domain-failure"><strong>Failure reason:</strong> ${escapeHtml(domain.failureReason)}</div>` : ''}
+      <h4>Managed-zone records</h4>
+      <p>These records are returned by the backend for the delegated zone. Publish or verify them inside the managed zone when required.</p>
+      <ul>${nonNsInstructions.length ? nonNsInstructions.map((instruction) => renderDnsInstruction(instruction)).join('') : '<li>No additional DNS records are required from the dashboard right now.</li>'}</ul>
+    </section>`;
+}
+
+function renderDnsInstruction(instruction: DomainDnsInstruction): string {
+  const value = Array.isArray(instruction.value) ? instruction.value.join(', ') : instruction.value;
+  const record = `${instruction.name} ${instruction.type} ${value}`;
+  return `
+    <li class="dns-instruction-row">
+      <code>${escapeHtml(record)}</code>
+      <span>${escapeHtml(instruction.purpose)}${instruction.required ? '' : ' (optional)'}</span>
+      ${renderCopyButton(record, 'Copy record')}
+    </li>`;
+}
+
+function renderCopyButton(value: string, label: string): string {
+  return `<button type="button" class="copy-button" data-action="copy-to-clipboard" data-copy-value="${escapeHtml(value)}">${escapeHtml(label)}</button>`;
+}
+
+function isDelegatedDomain(domain: ProjectDomain): boolean {
+  return domain.dnsMode === 'delegated_sub_zone' || domain.dnsMode === 'delegated_full_zone';
 }
 
 function renderEnvironmentVariablesPage(project: Project | undefined, variables: EnvironmentVariable[]): string {
@@ -1437,6 +1532,17 @@ function optionalString(value: FormDataEntryValue | null): string | undefined {
   return normalized || undefined;
 }
 
+function optionalDomainDnsMode(value: FormDataEntryValue | null): DomainDnsMode | undefined {
+  const normalized = optionalString(value);
+  return normalized === 'none'
+    || normalized === 'custom_cname'
+    || normalized === 'apex'
+    || normalized === 'delegated_sub_zone'
+    || normalized === 'delegated_full_zone'
+    ? normalized
+    : undefined;
+}
+
 function requiredProjectId(element: HTMLElement): string {
   return requiredDataset(element, 'projectId');
 }
@@ -1455,6 +1561,26 @@ function requiredDataset(element: HTMLElement, key: string): string {
     throw new Error(`Missing ${key} attribute.`);
   }
   return value;
+}
+
+async function copyToClipboard(value: string): Promise<void> {
+  if (globalThis.navigator?.clipboard?.writeText) {
+    await globalThis.navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = globalThis.document?.createElement('textarea');
+  if (!textarea) {
+    return;
+  }
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  globalThis.document.body.append(textarea);
+  textarea.select();
+  globalThis.document.execCommand?.('copy');
+  textarea.remove();
 }
 
 function isErrorPayload(payload: unknown): payload is { error: { message: string } } {

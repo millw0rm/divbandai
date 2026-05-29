@@ -66,6 +66,7 @@ button:hover,
 }
 
 input,
+select,
 textarea {
   width: 100%;
   margin-top: 0.35rem;
@@ -354,6 +355,71 @@ dd {
 
 tr.selected td {
   background: #f0f4ff;
+}
+
+.domain-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.domain-heading span,
+.muted {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+}
+
+.domain-status-grid {
+  margin: 1rem 0;
+}
+
+.dns-instructions {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.dns-instructions h3,
+.dns-instructions h4 {
+  margin: 0;
+}
+
+.dns-instructions ul,
+.delegated-nameservers ul {
+  display: grid;
+  gap: 0.65rem;
+  padding-left: 1.15rem;
+}
+
+.dns-instruction-row,
+.delegated-nameservers li {
+  overflow-wrap: anywhere;
+}
+
+.dns-instruction-row code,
+.delegated-nameservers code {
+  margin-right: 0.5rem;
+}
+
+.copy-button {
+  min-height: 2rem;
+  padding: 0.4rem 0.7rem;
+  box-shadow: none;
+  font-size: 0.8rem;
+}
+
+.propagation-guidance {
+  padding: 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 1rem;
+  background: #eff6ff;
+}
+
+.domain-failure {
+  margin: 1rem 0;
 }
 
 @media (max-width: 860px) {
