@@ -4,7 +4,18 @@
 
 ## Supported Kubernetes distribution
 
-The first supported Kubernetes bootstrap path is **k3s**. It is intended for a small persistent VM deployment where operators supply VM IP addresses or DNS names. The Kubernetes role is isolated at `roles/kubernetes` so a future kubeadm implementation can be added without changing the GitLab, add-on, or Divband application roles.
+The first supported Kubernetes bootstrap path is **k3s**. It is intended for a small persistent VM deployment where operators supply VM IP addresses or DNS names. The Kubernetes role is isolated at `roles/kubernetes` so a future kubeadm, Kubespray, or managed-cluster handoff can be added without changing the GitLab, add-on, or Divband application roles.
+
+### Why k3s instead of minikube or Kubespray for the MVP?
+
+| Option | Decision | Rationale |
+| --- | --- | --- |
+| k3s | Use for the VM-IP MVP bootstrap. | It gives Divband a real Kubernetes API, namespaces, RBAC, ingress, cert-manager, External Secrets, and multi-node worker capacity without forcing the operator to own the full kubeadm/Kubespray lifecycle on day one. |
+| minikube | Use only for local developer testing. | It is optimized for a local workstation and is not the right persistent runtime for customer traffic, GitLab deployments, DNS/TLS, or multi-VM node lifecycle. |
+| Kubespray | Keep as a future production option. | It is a good path when Divband needs kubeadm-style HA clusters and a team ready to manage more explicit Kubernetes networking, etcd, upgrades, and inventory complexity. It is heavier than needed for the first operator-run MVP pilot. |
+| Managed Kubernetes | Prefer later when provider and budget are decided. | It reduces operations burden for a public business, but the current VM-IP bootstrap is meant to work before committing to a specific cloud provider. |
+
+The role currently enforces this boundary with `kubernetes_distribution: k3s`; selecting another value fails fast until a second distribution implementation is added.
 
 ## Layout
 
