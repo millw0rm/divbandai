@@ -1,0 +1,8 @@
+{
+  "name": "@divband/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "User dashboard for creating and operating divband projects.",
+  "type": "module",
+  "main": "src/dashboard.ts"
+}

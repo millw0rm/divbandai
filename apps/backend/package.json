@@ -1,0 +1,8 @@
+{
+  "name": "@divband/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platform API for project lifecycle orchestration.",
+  "type": "module",
+  "main": "src/project-lifecycle.ts"
+}
