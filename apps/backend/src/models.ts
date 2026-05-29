@@ -192,6 +192,7 @@ export interface PublishRequest {
   ttlSeconds?: number;
   viewer?: string;
   spaMode?: boolean;
+  anonymous?: boolean;
 }
 
 export interface PublishResponse {

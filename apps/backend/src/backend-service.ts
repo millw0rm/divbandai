@@ -90,7 +90,7 @@ export class BackendService {
         const publishSlug = route.segments[3];
 
         if (method === 'POST' && this.matches(route, 'api', 'v1', 'publish')) {
-          const response = this.publishing.create(this.requiredObject(request.body) as unknown as PublishRequest, actor);
+          const response = await this.publishing.create(this.requiredObject(request.body) as unknown as PublishRequest, actor);
           if (actor) {
             this.audit.record(actor.user.id, 'publish.created', { slug: response.slug });
           }
@@ -98,7 +98,7 @@ export class BackendService {
         }
 
         if (method === 'PUT' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug)) {
-          const response = this.publishing.update(publishSlug, this.requiredObject(request.body) as unknown as PublishRequest & { claimToken?: unknown }, actor);
+          const response = await this.publishing.update(publishSlug, this.requiredObject(request.body) as unknown as PublishRequest & { claimToken?: unknown }, actor);
           if (actor) {
             this.audit.record(actor.user.id, 'publish.updated', { slug: response.slug, versionId: response.upload.versionId });
           }
@@ -117,7 +117,7 @@ export class BackendService {
           if (!actor) {
             throw new Error('Authentication is required.');
           }
-          const publish = this.publishing.claim(publishSlug, this.requiredObject(request.body).claimToken, actor);
+          const publish = await this.publishing.claim(publishSlug, this.requiredObject(request.body).claimToken, actor);
           this.audit.record(actor.user.id, 'publish.claimed', { slug: publish.slug });
           return this.ok({ publish });
         }

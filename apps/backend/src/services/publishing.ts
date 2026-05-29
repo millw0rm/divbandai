@@ -10,24 +10,25 @@ import type {
 import type { BackendStore } from '../store';
 import { createId, normalizeSlug, nowIso } from '../utils';
 
-const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 7;
+const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
 const MAX_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export class PublishingService {
   constructor(private readonly store: BackendStore) {}
 
-  create(input: PublishRequest, actor?: AuthActor): PublishResponse {
+  async create(input: PublishRequest, actor?: AuthActor): Promise<PublishResponse> {
     const files = this.filesFromInput(input.files);
     const timestamp = nowIso();
     const slug = this.uniqueSlug(this.slugFromFiles(files));
+    const anonymous = !actor || input.anonymous === true;
     const ttlSeconds = this.ttlSeconds(input.ttlSeconds);
-    const expiresAt = actor ? undefined : this.expiresAt(ttlSeconds);
-    const claimToken = actor ? undefined : createId('claim_token');
+    const expiresAt = anonymous ? this.expiresAt(ttlSeconds) : undefined;
+    const claimToken = anonymous ? this.randomToken('claim') : undefined;
     const version = this.createVersion(files, timestamp);
     const publish: Publish = {
       slug,
-      ownerUserId: actor?.user.id,
-      claimTokenHash: claimToken ? this.hashSecret(claimToken) : undefined,
+      ownerUserId: anonymous ? undefined : actor?.user.id,
+      claimTokenHash: claimToken ? await this.hashSecret(claimToken) : undefined,
       viewer: this.optionalTrimmedString(input.viewer),
       spaMode: input.spaMode === true,
       ttlSeconds,
@@ -41,9 +42,10 @@ export class PublishingService {
     return this.responseFor(publish, version, this.uploadPlan(files), [], claimToken);
   }
 
-  update(slug: string, input: PublishRequest & { claimToken?: unknown }, actor?: AuthActor): PublishResponse {
+  async update(slug: string, input: PublishRequest & { claimToken?: unknown }, actor?: AuthActor): Promise<PublishResponse> {
     const publish = this.requirePublish(slug);
-    this.requireWriteAccess(publish, actor, input.claimToken);
+    await this.requireWriteAccess(publish, actor, input.claimToken);
+    this.requireNotExpired(publish);
     const files = this.filesFromInput(input.files);
     const previousFiles = this.liveOrLatestVersion(publish)?.files ?? [];
     const skipped = files.filter((file) => previousFiles.some((previous) => previous.path === file.path && previous.hash === file.hash));
@@ -69,6 +71,7 @@ export class PublishingService {
       throw new Error('versionId is required.');
     }
     const publish = this.requirePublish(slug);
+    this.requireNotExpired(publish);
     const version = publish.versions.find((item) => item.id === versionId);
     if (!version) {
       throw new Error('Publish version not found.');
@@ -81,12 +84,13 @@ export class PublishingService {
     return publish;
   }
 
-  claim(slug: string, claimToken: unknown, actor: AuthActor): Publish {
+  async claim(slug: string, claimToken: unknown, actor: AuthActor): Promise<Publish> {
     const publish = this.requirePublish(slug);
     if (publish.ownerUserId) {
       throw new Error('Publish is already claimed.');
     }
-    if (!this.claimTokenMatches(publish, claimToken)) {
+    this.requireNotExpired(publish);
+    if (!(await this.claimTokenMatches(publish, claimToken))) {
       throw new Error('A valid claimToken is required.');
     }
 
@@ -141,18 +145,22 @@ export class PublishingService {
     }));
   }
 
-  private requireWriteAccess(publish: Publish, actor: AuthActor | undefined, claimToken: unknown): void {
+  private async requireWriteAccess(publish: Publish, actor: AuthActor | undefined, claimToken: unknown): Promise<void> {
     if (actor && publish.ownerUserId === actor.user.id) {
       return;
     }
-    if (!publish.ownerUserId && this.claimTokenMatches(publish, claimToken)) {
+    if (!publish.ownerUserId && (await this.claimTokenMatches(publish, claimToken))) {
       return;
     }
     throw new Error('A valid claimToken or bearer API key is required to update this publish.');
   }
 
-  private claimTokenMatches(publish: Publish, claimToken: unknown): boolean {
-    return typeof claimToken === 'string' && publish.claimTokenHash === this.hashSecret(claimToken);
+  private async claimTokenMatches(publish: Publish, claimToken: unknown): Promise<boolean> {
+    if (typeof claimToken !== 'string' || !publish.claimTokenHash) {
+      return false;
+    }
+    const candidate = await this.hashSecret(claimToken);
+    return this.safeEqual(candidate, publish.claimTokenHash);
   }
 
   private requirePublish(slug: string): Publish {
@@ -204,11 +212,11 @@ export class PublishingService {
   }
 
   private uniqueSlug(base: string): string {
-    let candidate = base;
+    let candidate = `${base}-${this.randomSlugSuffix()}`;
     let suffix = 1;
     while (this.store.publishes.has(candidate)) {
       suffix += 1;
-      candidate = `${base}-${suffix}`;
+      candidate = `${base}-${this.randomSlugSuffix()}-${suffix}`;
     }
     return candidate;
   }
@@ -239,11 +247,52 @@ export class PublishingService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
-  private hashSecret(secret: string): string {
-    let hash = 0;
-    for (const char of secret) {
-      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  private requireNotExpired(publish: Publish): void {
+    if (!publish.ownerUserId && publish.expiresAt && Date.parse(publish.expiresAt) <= Date.now()) {
+      throw new Error('Publish has expired.');
     }
-    return `local-dev:${hash.toString(16)}:${secret.length}`;
+  }
+
+  private randomToken(prefix: string, byteLength = 32): string {
+    const bytes = this.randomBytes(byteLength);
+    return `${prefix}_${this.base64Url(bytes)}`;
+  }
+
+  private randomSlugSuffix(): string {
+    return this.hex(this.randomBytes(12));
+  }
+
+  private randomBytes(byteLength: number): Uint8Array {
+    const bytes = new Uint8Array(byteLength);
+    globalThis.crypto.getRandomValues(bytes);
+    return bytes;
+  }
+
+  private hex(bytes: Uint8Array): string {
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  private base64Url(bytes: Uint8Array): string {
+    let value = '';
+    for (const byte of bytes) {
+      value += String.fromCharCode(byte);
+    }
+    return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  private async hashSecret(secret: string): Promise<string> {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+    return `sha256:${this.base64Url(new Uint8Array(digest))}`;
+  }
+
+  private safeEqual(left: string, right: string): boolean {
+    const leftBytes = new TextEncoder().encode(left);
+    const rightBytes = new TextEncoder().encode(right);
+    let difference = leftBytes.byteLength ^ rightBytes.byteLength;
+    const maxLength = Math.max(leftBytes.byteLength, rightBytes.byteLength);
+    for (let index = 0; index < maxLength; index += 1) {
+      difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+    }
+    return difference === 0;
   }
 }
