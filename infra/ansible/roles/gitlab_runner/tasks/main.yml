@@ -1,10 +1,18 @@
 ---
-- name: Validate GitLab Runner project mapping
+- name: Validate GitLab Runner token source configuration
   ansible.builtin.assert:
     that:
       - gitlab_url | length > 0
-      - gitlab_runner_project_key | length > 0 or gitlab_runner_token != 'REPLACE_WITH_RUNNER_AUTHENTICATION_TOKEN'
-    fail_msg: "Set gitlab_runner_project_key to a Terraform project key, or provide gitlab_runner_token from the platform secret store."
+      - gitlab_runner_token | length > 0
+      - gitlab_runner_token != gitlab_runner_token_placeholder or (gitlab_runner_allow_terraform_token_lookup | bool and gitlab_runner_project_key | length > 0)
+    fail_msg: >-
+      GitLab Runner requires a vault-provided gitlab_runner_token/vault_gitlab_runner_token, or
+      gitlab_runner_project_key plus Terraform output lookup enabled before installing packages.
+
+- name: Check whether a vault-provided runner token is already available
+  ansible.builtin.set_fact:
+    gitlab_runner_vault_token_available: "{{ gitlab_runner_token | length > 0 and gitlab_runner_token != gitlab_runner_token_placeholder }}"
+  no_log: true
 
 - name: Read runner authentication tokens from GitLab Terraform outputs
   ansible.builtin.command:
@@ -14,19 +22,45 @@
   become: false
   register: gitlab_runner_terraform_tokens
   changed_when: false
+  failed_when: false
   no_log: true
   when:
+    - not (gitlab_runner_vault_token_available | bool)
+    - gitlab_runner_allow_terraform_token_lookup | bool
     - gitlab_runner_project_key | length > 0
-    - gitlab_runner_token == 'REPLACE_WITH_RUNNER_AUTHENTICATION_TOKEN'
 
-- name: Select this runner authentication token
+- name: Parse runner authentication tokens from Terraform outputs
   ansible.builtin.set_fact:
-    gitlab_runner_token: "{{ (gitlab_runner_terraform_tokens.stdout | from_json)[gitlab_runner_project_key] }}"
+    gitlab_runner_terraform_token_map: "{{ gitlab_runner_terraform_tokens.stdout | default('{}') | from_json }}"
   no_log: true
   when:
-    - gitlab_runner_project_key | length > 0
     - gitlab_runner_terraform_tokens is defined
-    - gitlab_runner_terraform_tokens.stdout is defined
+    - gitlab_runner_terraform_tokens.rc == 0
+    - gitlab_runner_terraform_tokens.stdout | default('') | length > 0
+
+- name: Validate runner authentication token availability before installing packages
+  ansible.builtin.assert:
+    that:
+      - >-
+        gitlab_runner_vault_token_available | bool or
+        (
+          gitlab_runner_terraform_token_map | default({}) | length > 0 and
+          gitlab_runner_project_key in (gitlab_runner_terraform_token_map | default({})) and
+          (gitlab_runner_terraform_token_map[gitlab_runner_project_key] | default('') | length > 0)
+        )
+    fail_msg: >-
+      No GitLab Runner authentication token is available before package installation. Run
+      Terraform in {{ gitlab_runner_terraform_dir }} first so output
+      {{ gitlab_runner_token_output_name }} contains {{ gitlab_runner_project_key | default('<unset>', true) }},
+      or provide vault_gitlab_runner_token/gitlab_runner_token from Ansible Vault or an external
+      secret source.
+
+- name: Select this runner authentication token from Terraform outputs
+  ansible.builtin.set_fact:
+    gitlab_runner_token: "{{ gitlab_runner_terraform_token_map[gitlab_runner_project_key] }}"
+  no_log: true
+  when:
+    - not (gitlab_runner_vault_token_available | bool)
 
 - name: Read project metadata from GitLab Terraform outputs
   ansible.builtin.command:
@@ -36,18 +70,39 @@
   become: false
   register: gitlab_runner_terraform_projects
   changed_when: false
+  failed_when: false
   when:
     - gitlab_runner_project_key | length > 0
     - gitlab_runner_tags | length == 0
 
-- name: Select this project's runner tag
+- name: Parse project metadata from Terraform outputs
   ansible.builtin.set_fact:
-    gitlab_runner_resolved_tags: "{{ [((gitlab_runner_terraform_projects.stdout | from_json)[gitlab_runner_project_key]).runner_tag] + gitlab_runner_extra_tags }}"
+    gitlab_runner_terraform_project_map: "{{ gitlab_runner_terraform_projects.stdout | default('{}') | from_json }}"
   when:
-    - gitlab_runner_project_key | length > 0
-    - gitlab_runner_tags | length == 0
     - gitlab_runner_terraform_projects is defined
-    - gitlab_runner_terraform_projects.stdout is defined
+    - gitlab_runner_terraform_projects.rc == 0
+    - gitlab_runner_terraform_projects.stdout | default('') | length > 0
+
+- name: Validate runner tag source before installing packages
+  ansible.builtin.assert:
+    that:
+      - >-
+        gitlab_runner_tags | length > 0 or
+        (
+          gitlab_runner_terraform_project_map | default({}) | length > 0 and
+          gitlab_runner_project_key in (gitlab_runner_terraform_project_map | default({})) and
+          (gitlab_runner_terraform_project_map[gitlab_runner_project_key].runner_tag | default('') | length > 0)
+        )
+    fail_msg: >-
+      No GitLab Runner tag source is available before package installation. Set gitlab_runner_tags
+      explicitly, or run Terraform first so output {{ gitlab_runner_projects_output_name }} contains
+      {{ gitlab_runner_project_key | default('<unset>', true) }} with runner_tag.
+
+- name: Select this project's runner tag from Terraform outputs
+  ansible.builtin.set_fact:
+    gitlab_runner_resolved_tags: "{{ [gitlab_runner_terraform_project_map[gitlab_runner_project_key].runner_tag] + gitlab_runner_extra_tags }}"
+  when:
+    - gitlab_runner_tags | length == 0
 
 - name: Use explicitly configured runner tags
   ansible.builtin.set_fact:

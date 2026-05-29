@@ -33,7 +33,7 @@ The role currently enforces this boundary with `kubernetes_distribution: k3s`; s
 - `roles/observability` — installs metrics-server and a Fluent Bit DaemonSet as the initial metrics/logging agents.
 - `roles/load_balancer` — installs HAProxy/keepalived on `load_balancers` hosts to forward `:6443` to Kubernetes control-plane nodes and public `:80`/`:443` to ingress-nginx nodes.
 - `roles/gitlab` — connects to an existing GitLab endpoint, installs self-hosted GitLab when `gitlab_mode: install` is selected, and can run the Terraform stack under `../gitlab/terraform`.
-- `roles/gitlab_runner` — installs GitLab Runner, resolves project runner tags and authentication tokens from Terraform outputs, disables untagged jobs, and registers dedicated runners.
+- `roles/gitlab_runner` — validates that a runner token source exists before package installation, resolves project runner tags and authentication tokens from Terraform outputs or Vault, disables untagged jobs, and registers dedicated runners.
 - `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer.
 
 ## Integration points
@@ -121,23 +121,34 @@ Required or commonly customized variables:
 | `gitlab_mode`, `gitlab_url`, `gitlab_external_url`, `gitlab_terraform_dir`, `gitlab_run_terraform` | Use `gitlab_mode: install` to self-host GitLab on the `gitlab` group, or `gitlab_mode: connect` to point Divband at an existing GitLab URL. The site playbook provisions or connects GitLab before deploying the Divband app so these values are ready for the backend. |
 | `divband_gitlab_url`, `divband_gitlab_token` / `divband_gitlab_access_token`, `divband_gitlab_namespace_id` | Backend GitLab connection settings. Store credentials and optional namespace IDs in Ansible Vault or an external secret source; the `divband_app` role renders them into the `divband-backend-env` Kubernetes Secret and injects them with `secretKeyRef`. |
 | `gitlab_runner_project_key` | Required per runner host unless `gitlab_runner_token` is supplied from Vault. Use the Terraform project key, for example `acme/marketing`. |
-| `gitlab_runner_token` | Runner authentication token created by GitLab provisioning. Use Vault/platform secrets for normal runs; the role can also read `runner_authentication_tokens` from Terraform outputs when `gitlab_runner_project_key` is set. |
+| `gitlab_runner_token` / `vault_gitlab_runner_token` | Runner authentication token created by Terraform GitLab provisioning. Use Vault/platform secrets for normal runs; the role can also read `runner_authentication_tokens` from Terraform outputs when `gitlab_runner_project_key` is set. |
+| `gitlab_runner_allow_terraform_token_lookup` | Defaults to `true`; when no Vault token is present, allows the runner role to query Terraform outputs on the Ansible controller. Set to `false` if runners must only consume Vault-provided tokens. |
 | `gitlab_runner_tags` | Optional override for runner tags. Leave empty to use the project-specific `divband-*` tag exported by Terraform. |
 
 ### Divband backend GitLab secret handoff
 
 The backend receives GitLab connection settings from the `divband-backend-env` Kubernetes Secret, not from literal Deployment environment values. Set `divband_gitlab_url`, exactly one of `divband_gitlab_token` or `divband_gitlab_access_token`, and optional `divband_gitlab_namespace_id` from Ansible Vault variables such as `vault_divband_gitlab_token` and `vault_divband_gitlab_namespace_id`. During `playbooks/site.yml`, GitLab connection/installation and Terraform token preparation run before the `divband_app` play, then the app role renders the Secret and references `GITLAB_URL`, `GITLAB_TOKEN`/`GITLAB_ACCESS_TOKEN`, and `GITLAB_NAMESPACE_ID` through Kubernetes `secretKeyRef` entries.
 
-### GitLab runner token handoff
+### GitLab runner token lifecycle
 
-When `gitlab_run_terraform: true`, the GitLab role can run `terraform init`/`apply` in `infra/gitlab/terraform` after the operator supplies `gitlab_token` and the desired tenants/projects. The runner role reads `runner_authentication_tokens` and `projects` from `infra/gitlab/terraform/outputs.tf`, selects the matching token and project-specific `divband-*` tag, and registers the runner with `--run-untagged=false`.
+The supported fresh-environment flow is **Terraform creates GitLab projects and project-scoped runners first, then Ansible consumes the outputs**. The Ansible runner role does not create runners itself, and the backend does not provision project-scoped runners after project creation in this VM bootstrap path.
 
-`runner_authentication_tokens` is a sensitive Terraform output. Treat Terraform output as the short-lived handoff boundary and move each value into the platform secret store immediately after apply:
+1. Configure tenants/projects in `infra/gitlab/terraform/projects.auto.tfvars` with a stable `runner_tag` for each project. Terraform creates one `gitlab_user_runner` per project and exports two handoff outputs:
+   - `runner_token_handoff` — non-sensitive project key, runner ID, runner tag, and token output name for operator visibility.
+   - `runner_authentication_tokens` — sensitive map keyed by `tenant/project`, for example `acme/marketing`.
+2. Run Terraform before the runner playbook, either directly or through the GitLab role when `gitlab_run_terraform: true`:
 
-1. Run `terraform -chdir=infra/gitlab/terraform output -json runner_authentication_tokens` only from a trusted operator workstation or CI job with protected logs.
-2. Write each `tenant/project` token into the platform secret store path used for Ansible Vault or your external secret backend, for example `divband/gitlab/runners/acme/marketing/token`.
-3. Reference that stored value as `vault_gitlab_runner_token` in host/group vars, or allow the runner playbook to read the Terraform output directly during the same protected provisioning run.
-4. Do not commit tokens to inventory, Terraform variable files, or runner configuration examples.
+   ```sh
+   terraform -chdir=infra/gitlab/terraform init
+   terraform -chdir=infra/gitlab/terraform apply
+   terraform -chdir=infra/gitlab/terraform output runner_token_handoff
+   ```
+
+3. Choose exactly one token handoff method for each runner host:
+   - **Immediate Terraform handoff:** set `gitlab_runner_project_key: acme/marketing` on the runner host and leave `gitlab_runner_allow_terraform_token_lookup: true`. During the same protected provisioning run, Ansible reads `runner_authentication_tokens` and `projects` from the Terraform state on the controller, resolves the token and `divband-*` tag, then registers GitLab Runner.
+   - **Vault handoff:** from a trusted operator workstation or protected CI job, run `terraform -chdir=infra/gitlab/terraform output -json runner_authentication_tokens`, copy each value into Ansible Vault or your external secret backend, and expose it to the host as `vault_gitlab_runner_token` or `gitlab_runner_token`. Keep `gitlab_runner_project_key` set when you want tags resolved from Terraform; otherwise set `gitlab_runner_tags` explicitly.
+4. The runner role validates the lifecycle before any repository setup or package installation. It fails fast unless either a non-placeholder Vault token is present or Terraform output lookup can find `runner_authentication_tokens[gitlab_runner_project_key]`. It also validates that runner tags come from Terraform `projects[gitlab_runner_project_key].runner_tag` or explicit `gitlab_runner_tags`, that every tag matches `divband-*`, and that `gitlab_runner_run_untagged` remains `false`.
+5. Do not commit runner tokens to inventory, Terraform variable files, documentation examples, or GitLab Runner config files. Treat Terraform outputs as a short-lived handoff boundary and move tokens to the platform secret store after bootstrap.
 
 ### Load-balancer and DNS handoff
 

@@ -11,10 +11,16 @@ gitlab_runner_description: "{{ inventory_hostname }}"
 # Set gitlab_runner_project_key to a Terraform project key such as `acme/marketing`.
 # The role reads both the token and project runner tag from Terraform outputs.
 gitlab_runner_project_key: ""
-gitlab_runner_token: "{{ vault_gitlab_runner_token | default('REPLACE_WITH_RUNNER_AUTHENTICATION_TOKEN') }}"
+gitlab_runner_token_placeholder: REPLACE_WITH_RUNNER_AUTHENTICATION_TOKEN
+# Preferred fresh-environment lifecycle: Terraform creates project-scoped runners and
+# exposes runner_authentication_tokens; Ansible consumes that output during the same
+# protected provisioning run, or consumes this value from Vault after the token has
+# been moved to the platform secret store.
+gitlab_runner_token: "{{ vault_gitlab_runner_token | default(gitlab_runner_token_placeholder) }}"
 gitlab_runner_terraform_dir: "{{ playbook_dir }}/../../gitlab/terraform"
 gitlab_runner_token_output_name: runner_authentication_tokens
 gitlab_runner_projects_output_name: projects
+gitlab_runner_allow_terraform_token_lookup: true
 # Leave empty to use the project-specific divband-* runner_tag from Terraform.
 gitlab_runner_tags: []
 gitlab_runner_extra_tags: []

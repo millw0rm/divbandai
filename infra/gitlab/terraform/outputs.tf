@@ -33,6 +33,20 @@ output "project_access_tokens" {
   sensitive = true
 }
 
+output "runner_token_handoff" {
+  description = "Non-sensitive runner handoff index for fresh environments. Use project_key with the sensitive runner_authentication_tokens output, then pass the token to Ansible or Vault."
+  value = {
+    for key, runner in gitlab_user_runner.project : key => {
+      project_key         = key
+      project_id          = gitlab_project.project[key].id
+      path_with_namespace = gitlab_project.project[key].path_with_namespace
+      runner_id           = runner.id
+      runner_tag          = local.projects[key].runner_tag
+      token_output_name   = "runner_authentication_tokens"
+    }
+  }
+}
+
 output "runner_authentication_tokens" {
   description = "Runner authentication tokens for installing dedicated runner pods or VMs."
   value = {
