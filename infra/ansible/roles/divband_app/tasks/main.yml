@@ -1,4 +1,49 @@
 ---
+- name: Assert production divband app configuration is complete
+  ansible.builtin.assert:
+    that:
+      - divband_api_base_url | trim | length > 0
+      - divband_api_base_url != 'http://localhost:3000'
+      - divband_api_base_url is not search('REPLACE_WITH_')
+      - divband_public_site_domain | trim | length > 0
+      - divband_public_site_domain != 'localhost.test'
+      - divband_public_site_domain is not search('REPLACE_WITH_')
+      - divband_upload_domain | trim | length > 0
+      - divband_upload_domain != 'uploads.localhost.test'
+      - divband_upload_domain is not search('REPLACE_WITH_')
+      - divband_object_storage_bucket | trim | length > 0
+      - divband_object_storage_bucket != 'divband-local'
+      - divband_object_storage_bucket is not search('REPLACE_WITH_')
+      - divband_object_storage_endpoint | trim | length > 0
+      - divband_object_storage_endpoint != 'http://localhost:9000'
+      - divband_object_storage_endpoint is not search('REPLACE_WITH_')
+      - divband_object_storage_region | trim | length > 0
+      - divband_object_storage_region is not search('REPLACE_WITH_')
+      - divband_object_storage_access_key_id | trim | length > 0
+      - divband_object_storage_access_key_id != 'minioadmin'
+      - divband_object_storage_access_key_id is not search('REPLACE_WITH_')
+      - divband_object_storage_secret_access_key | trim | length > 0
+      - divband_object_storage_secret_access_key != 'minioadmin'
+      - divband_object_storage_secret_access_key is not search('REPLACE_WITH_')
+      - divband_database_url | trim | length > 0
+      - divband_database_url != 'sqlite://./data/divband-backend.sqlite'
+      - divband_database_url is not search('REPLACE_WITH_')
+      - (divband_gitlab_token | trim | length > 0) or (divband_gitlab_access_token | trim | length > 0)
+      - (divband_gitlab_token | trim | length == 0) or (divband_gitlab_token is not search('REPLACE_WITH_'))
+      - (divband_gitlab_access_token | trim | length == 0) or (divband_gitlab_access_token is not search('REPLACE_WITH_'))
+      - divband_token_hash_pepper | trim | length > 0
+      - divband_token_hash_pepper != 'divband-local-development-token-pepper'
+      - divband_token_hash_pepper is not search('REPLACE_WITH_')
+    fail_msg: >-
+      divband_environment=production requires explicit non-local values for
+      API_BASE_URL, PUBLIC_SITE_DOMAIN, UPLOAD_DOMAIN, OBJECT_STORAGE_BUCKET,
+      OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_REGION, OBJECT_STORAGE_ACCESS_KEY_ID,
+      OBJECT_STORAGE_SECRET_ACCESS_KEY, DATABASE_URL, GITLAB_TOKEN or
+      GITLAB_ACCESS_TOKEN, and DIVBAND_TOKEN_HASH_PEPPER. Set the corresponding
+      divband_* variables in production inventory or Ansible Vault.
+    success_msg: Production divband app configuration is complete.
+  when: (divband_environment | default('demo') | lower) == 'production'
+
 - name: Ensure divband namespace exists before kubeconfig hand-off
   ansible.builtin.command:
     cmd: "kubectl create namespace {{ divband_namespace }} --dry-run=client -o yaml"

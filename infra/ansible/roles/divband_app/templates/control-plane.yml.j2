@@ -6,6 +6,27 @@ metadata:
   labels:
     app.kubernetes.io/part-of: divband
 ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: divband-backend-env
+  namespace: {{ divband_namespace }}
+  labels:
+    app.kubernetes.io/name: divband-backend
+    app.kubernetes.io/part-of: divband
+type: Opaque
+stringData:
+  DATABASE_URL: {{ divband_database_url | string | to_json }}
+  OBJECT_STORAGE_ACCESS_KEY_ID: {{ divband_object_storage_access_key_id | string | to_json }}
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: {{ divband_object_storage_secret_access_key | string | to_json }}
+{% if divband_gitlab_token | trim | length > 0 %}
+  GITLAB_TOKEN: {{ divband_gitlab_token | string | to_json }}
+{% endif %}
+{% if divband_gitlab_access_token | trim | length > 0 %}
+  GITLAB_ACCESS_TOKEN: {{ divband_gitlab_access_token | string | to_json }}
+{% endif %}
+  DIVBAND_TOKEN_HASH_PEPPER: {{ divband_token_hash_pepper | string | to_json }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,7 +51,67 @@ spec:
           ports:
             - containerPort: {{ divband_backend_port }}
           env:
-{% for key, value in divband_app_env.items() %}
+            - name: API_BASE_URL
+              value: {{ divband_api_base_url | string | to_json }}
+            - name: PUBLIC_SITE_DOMAIN
+              value: {{ divband_public_site_domain | string | to_json }}
+            - name: UPLOAD_DOMAIN
+              value: {{ divband_upload_domain | string | to_json }}
+            - name: OBJECT_STORAGE_BUCKET
+              value: {{ divband_object_storage_bucket | string | to_json }}
+            - name: OBJECT_STORAGE_ENDPOINT
+              value: {{ divband_object_storage_endpoint | string | to_json }}
+            - name: OBJECT_STORAGE_REGION
+              value: {{ divband_object_storage_region | string | to_json }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: DATABASE_URL
+            - name: OBJECT_STORAGE_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: OBJECT_STORAGE_ACCESS_KEY_ID
+            - name: OBJECT_STORAGE_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: OBJECT_STORAGE_SECRET_ACCESS_KEY
+{% if divband_gitlab_token | trim | length > 0 %}
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: GITLAB_TOKEN
+{% endif %}
+{% if divband_gitlab_access_token | trim | length > 0 %}
+            - name: GITLAB_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: GITLAB_ACCESS_TOKEN
+{% endif %}
+            - name: DIVBAND_TOKEN_HASH_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: divband-backend-env
+                  key: DIVBAND_TOKEN_HASH_PEPPER
+{% set reserved_env = [
+  'API_BASE_URL',
+  'PUBLIC_SITE_DOMAIN',
+  'UPLOAD_DOMAIN',
+  'OBJECT_STORAGE_BUCKET',
+  'OBJECT_STORAGE_ENDPOINT',
+  'OBJECT_STORAGE_REGION',
+  'OBJECT_STORAGE_ACCESS_KEY_ID',
+  'OBJECT_STORAGE_SECRET_ACCESS_KEY',
+  'DATABASE_URL',
+  'GITLAB_TOKEN',
+  'GITLAB_ACCESS_TOKEN',
+  'DIVBAND_TOKEN_HASH_PEPPER'
+] %}
+{% for key, value in divband_app_env.items() if key not in reserved_env %}
             - name: {{ key }}
               value: {{ value | string | to_json }}
 {% endfor %}

@@ -11,6 +11,25 @@ divband_k8s_base_dir: "{{ playbook_dir }}/../../k8s/base"
 divband_apply_base_templates: false
 divband_kubeconfig_secret_name: divband-kubeconfig
 divband_kubeconfig_mount_path: /var/run/divband/kubeconfig/config
+
+# Local/demo defaults. Production inventories must override these with real
+# endpoint, persistence, object storage, GitLab, and token-hashing values.
+divband_api_base_url: http://localhost:3000
+divband_public_site_domain: localhost.test
+divband_upload_domain: uploads.localhost.test
+divband_object_storage_bucket: divband-local
+divband_object_storage_endpoint: http://localhost:9000
+divband_object_storage_region: us-east-1
+divband_object_storage_access_key_id: minioadmin
+divband_object_storage_secret_access_key: minioadmin
+divband_database_url: sqlite://./data/divband-backend.sqlite
+divband_gitlab_token: "{{ gitlab_token | default('') }}"
+divband_gitlab_access_token: "{{ gitlab_access_token | default('') }}"
+divband_token_hash_pepper: divband-local-development-token-pepper
+
+# Additional backend environment variables. The production-required variables
+# above are rendered explicitly in control-plane.yml.j2 and should not be placed
+# here by inventory overrides.
 divband_app_env:
   KUBERNETES_TEMPLATE_DIR: /app/infra/k8s/base
   KUBERNETES_APPLY: "true"

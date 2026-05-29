@@ -42,6 +42,22 @@ all:
     divband_frontend_image: registry.gitlab.com/divband/control-plane/frontend:latest
     divband_public_hostname: app.divband.ir
 
+    # Production control-plane application settings. Replace every placeholder
+    # and store secret values with Ansible Vault or your external secret source.
+    divband_api_base_url: https://app.divband.ir/api
+    divband_public_site_domain: sites.divband.ir
+    divband_upload_domain: uploads.divband.ir
+    divband_object_storage_bucket: REPLACE_WITH_PRODUCTION_BUCKET
+    divband_object_storage_endpoint: https://REPLACE_WITH_OBJECT_STORAGE_ENDPOINT
+    divband_object_storage_region: REPLACE_WITH_OBJECT_STORAGE_REGION
+    divband_object_storage_access_key_id: REPLACE_WITH_OBJECT_STORAGE_ACCESS_KEY_ID
+    divband_object_storage_secret_access_key: REPLACE_WITH_OBJECT_STORAGE_SECRET_ACCESS_KEY
+    divband_database_url: REPLACE_WITH_PRODUCTION_DATABASE_URL
+    divband_gitlab_token: REPLACE_WITH_GITLAB_TOKEN
+    # Alternatively set divband_gitlab_access_token instead of divband_gitlab_token.
+    divband_gitlab_access_token: ""
+    divband_token_hash_pepper: REPLACE_WITH_RANDOM_TOKEN_HASH_PEPPER
+
   children:
     k8s_control_plane:
       hosts:
