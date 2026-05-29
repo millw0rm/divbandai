@@ -768,13 +768,30 @@ export class BackendService {
     const domain = this.requireDomain(project, domainId);
     const observedToken = typeof body.observedToken === 'string' ? body.observedToken : undefined;
     domain.lastCheckedAt = nowIso();
+
+    if (this.isDelegatedDnsMode(domain.dnsMode)) {
+      const delegation = await this.dns.verifyDelegation(domain.hostname, domain.assignedNameservers);
+      domain.delegationStatus = delegation.verified ? 'verified' : 'failed';
+      if (!delegation.verified) {
+        const reason = delegation.reason ?? 'DNS delegation verification failed.';
+        domain.verificationStatus = 'failed';
+        domain.status = 'failed';
+        domain.failureReason = reason;
+        domain.updatedAt = nowIso();
+        throw new Error(reason);
+      }
+    }
+
     const verified = await this.dns.verify(domain.hostname, domain.verificationToken, observedToken);
     if (!verified) {
+      const reason = this.isDelegatedDnsMode(domain.dnsMode)
+        ? `Ownership verification failed: publish TXT ${domain.verificationName} with value ${domain.verificationValue} in the delegated managed zone, then retry.`
+        : 'DNS verification failed.';
       domain.verificationStatus = 'failed';
       domain.status = 'failed';
-      domain.failureReason = 'DNS verification failed.';
+      domain.failureReason = reason;
       domain.updatedAt = nowIso();
-      throw new Error('DNS verification failed.');
+      throw new Error(reason);
     }
 
     const verifiedAt = nowIso();
@@ -782,7 +799,7 @@ export class BackendService {
       ...domain,
       verified: true,
       verificationStatus: 'verified',
-      status: domain.delegationStatus === 'pending' ? 'verified' : 'active',
+      status: 'active',
       verifiedAt,
       updatedAt: verifiedAt,
       failureReason: undefined,

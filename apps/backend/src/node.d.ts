@@ -87,7 +87,28 @@ declare module 'node:child_process' {
   export function execFileSync(command: string, args?: string[], options?: { input?: string; encoding?: 'utf8'; stdio?: unknown }): string;
 }
 
+
+declare module 'node:dgram' {
+  export function createSocket(type: 'udp4' | 'udp6'): {
+    once(event: 'error', listener: (error: Error) => void): void;
+    once(event: 'message', listener: (message: Uint8Array) => void): void;
+    send(message: Uint8Array, port: number, address: string, callback: (error?: Error) => void): void;
+    close(): void;
+  };
+}
+
 declare module 'node:dns/promises' {
+  export class Resolver {
+    constructor(options?: { timeout?: number; tries?: number });
+    setServers(servers: string[]): void;
+    resolve4(hostname: string): Promise<string[]>;
+    resolve6(hostname: string): Promise<string[]>;
+    resolveCname(hostname: string): Promise<string[]>;
+    resolveNs(hostname: string): Promise<string[]>;
+  }
+
+  export function resolve4(hostname: string): Promise<string[]>;
+  export function resolve6(hostname: string): Promise<string[]>;
   export function resolveTxt(hostname: string): Promise<string[][]>;
 }
 
