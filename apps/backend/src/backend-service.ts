@@ -1,6 +1,7 @@
 import { can, assignableRoles, type ProjectPermission, type ProjectRole } from '@divband/auth';
 import { createProjectLifecyclePlan, type ProjectStatus } from './project-lifecycle.ts';
 import type {
+  AbuseAction,
   AiChangeRequest,
   AiCiStatus,
   AiContextAttachment,
@@ -21,6 +22,8 @@ import type {
   OrganizationMembership,
   Project,
   ProjectDomain,
+  PlatformAdmin,
+  PlatformAdminRole,
   ProjectMembership,
   PublishRequest,
   User,
@@ -79,6 +82,9 @@ export class BackendService {
       if (method === 'POST' && this.matches(route, 'auth', 'register')) {
         const result = this.auth.register(this.registerInput(request.body));
         this.ensurePersonalOrganization(result.user);
+        if (this.store.users.size === 1 && this.store.platformAdmins.size === 0) {
+          this.grantPlatformAdmin(result.user.id, 'super_admin', result.user.id);
+        }
         this.audit.record(result.user.id, 'user.registered', { email: result.user.email });
         return this.created(this.authResponse(result));
       }
@@ -162,6 +168,10 @@ export class BackendService {
 
       const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
       const user = actor.user;
+
+      if (route.segments[0] === 'admin') {
+        return this.handleAdminRoute(method, route, actor, request.body);
+      }
 
       if (method === 'GET' && this.matches(route, 'api', 'v1', 'publishes')) {
         return this.ok({ publishes: this.publishing.list(actor) });
@@ -361,6 +371,201 @@ export class BackendService {
     } catch (error) {
       return this.error(400, 'bad_request', error instanceof Error ? error.message : 'Request failed.');
     }
+  }
+
+
+  private handleAdminRoute(method: string, route: RouteMatch, actor: AuthActor, body: unknown): ApiResponse {
+    this.requirePlatformAdmin(actor);
+    const resource = route.segments[1];
+    this.audit.record(actor.user.id, 'platform_admin.route_accessed', { method, path: `/${route.segments.join('/')}` });
+
+    if (method === 'GET' && resource === 'users') {
+      return this.ok({ users: this.searchUsers(route.query.get('q') ?? undefined) });
+    }
+
+    if (method === 'GET' && resource === 'organizations') {
+      return this.ok({ organizations: this.searchOrganizations(route.query.get('q') ?? undefined) });
+    }
+
+    if (method === 'GET' && resource === 'projects') {
+      return this.ok({ projects: this.platformProjectOverview() });
+    }
+
+    if (method === 'GET' && resource === 'domains') {
+      return this.ok({ domains: this.platformDomainStatus() });
+    }
+
+    if (method === 'GET' && resource === 'runners' && route.segments[2] === 'health') {
+      return this.ok({ runners: this.runnerHealth() });
+    }
+
+    if (method === 'GET' && resource === 'deployments' && route.segments[2] === 'failures') {
+      return this.ok({ deployments: this.failedDeployments() });
+    }
+
+    if (method === 'GET' && resource === 'audit-events') {
+      return this.ok({ auditEvents: this.store.auditEvents.slice(-200).reverse() });
+    }
+
+    if (method === 'GET' && resource === 'abuse-actions') {
+      return this.ok({ abuseActions: [...this.store.abuseActions.values()].reverse() });
+    }
+
+    if (method === 'POST' && resource === 'abuse-actions') {
+      return this.created({ abuseAction: this.createAbuseAction(actor.user, this.requiredObject(body)) });
+    }
+
+    if (method === 'GET' && resource === 'platform-admins') {
+      return this.ok({ platformAdmins: [...this.store.platformAdmins.values()].filter((admin) => !admin.revokedAt) });
+    }
+
+    if (method === 'POST' && resource === 'platform-admins') {
+      const input = this.requiredObject(body);
+      const userId = typeof input.userId === 'string' ? input.userId : '';
+      const role = typeof input.role === 'string' && this.isPlatformAdminRole(input.role) ? input.role : 'support';
+      return this.created({ platformAdmin: this.grantPlatformAdmin(userId, role, actor.user.id) });
+    }
+
+    if (method === 'DELETE' && resource === 'platform-admins' && route.segments[2]) {
+      return this.ok({ platformAdmin: this.revokePlatformAdmin(route.segments[2], actor.user.id) });
+    }
+
+    return this.error(404, 'not_found', 'Admin endpoint not found.');
+  }
+
+  private requirePlatformAdmin(actor: AuthActor): void {
+    if (!actor.platformAdmin || actor.platformAdmin.revokedAt) {
+      throw new Error('Platform administrator privileges are required.');
+    }
+  }
+
+  private grantPlatformAdmin(userId: string, role: PlatformAdminRole, grantedBy: string): PlatformAdmin {
+    if (!this.store.users.has(userId)) {
+      throw new Error('User not found.');
+    }
+    const existing = [...this.store.platformAdmins.values()].find((admin) => admin.userId === userId && !admin.revokedAt);
+    if (existing) {
+      existing.role = role;
+      this.audit.record(grantedBy, 'platform_admin.updated', { userId, role });
+      return existing;
+    }
+    const platformAdmin: PlatformAdmin = { id: createId('platform_admin'), userId, role, grantedBy, grantedAt: nowIso() };
+    this.store.platformAdmins.set(platformAdmin.id, platformAdmin);
+    this.audit.record(grantedBy, 'platform_admin.granted', { userId, role });
+    return platformAdmin;
+  }
+
+  private revokePlatformAdmin(adminId: string, revokedBy: string): PlatformAdmin {
+    const platformAdmin = this.store.platformAdmins.get(adminId);
+    if (!platformAdmin || platformAdmin.revokedAt) {
+      throw new Error('Platform admin not found.');
+    }
+    platformAdmin.revokedAt = nowIso();
+    this.audit.record(revokedBy, 'platform_admin.revoked', { userId: platformAdmin.userId, adminId });
+    return platformAdmin;
+  }
+
+  private searchUsers(query?: string): Array<User & { platformAdminRole?: PlatformAdminRole }> {
+    const normalized = query?.trim().toLowerCase();
+    return [...this.store.users.values()]
+      .filter((user) => !normalized || user.email.toLowerCase().includes(normalized) || user.name.toLowerCase().includes(normalized) || user.id === normalized)
+      .map((user) => ({ ...user, platformAdminRole: this.auth.platformAdminForUser(user.id)?.role }));
+  }
+
+  private searchOrganizations(query?: string): Organization[] {
+    const normalized = query?.trim().toLowerCase();
+    return [...this.store.organizations.values()].filter((organization) => !normalized || organization.name.toLowerCase().includes(normalized) || organization.slug.includes(normalized) || organization.id === normalized);
+  }
+
+  private platformProjectOverview(): Array<Project & { organization?: Organization; memberCount: number; failedDeploymentCount: number }> {
+    return [...this.store.projects.values()].map((project) => ({
+      ...project,
+      organization: this.store.organizations.get(project.organizationId),
+      memberCount: [...this.store.projectMemberships.values()].filter((membership) => membership.projectId === project.id).length,
+      failedDeploymentCount: project.deployments.filter((deployment) => deployment.state === 'failed').length,
+    }));
+  }
+
+  private platformDomainStatus(): Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }> {
+    return [...this.store.projects.values()].flatMap((project) => project.domains.map((domain) => ({ ...domain, projectId: project.id, projectSlug: project.slug, organizationId: project.organizationId })));
+  }
+
+  private runnerHealth(): Array<{ projectId: string; projectSlug: string; runnerTag: string; status: 'idle' | 'active' | 'degraded'; latestDeploymentState?: DeploymentState; checkedAt: string }> {
+    return [...this.store.projects.values()].map((project) => {
+      const latestDeployment = project.deployments.at(-1);
+      const active = latestDeployment?.state === 'queued' || latestDeployment?.state === 'running';
+      const degraded = latestDeployment?.state === 'failed' || project.status === 'failed';
+      return {
+        projectId: project.id,
+        projectSlug: project.slug,
+        runnerTag: project.runnerTag,
+        status: degraded ? 'degraded' : active ? 'active' : 'idle',
+        latestDeploymentState: latestDeployment?.state,
+        checkedAt: nowIso(),
+      };
+    });
+  }
+
+  private failedDeployments(): Array<Deployment & { projectSlug: string; organizationId: string }> {
+    return [...this.store.projects.values()].flatMap((project) => project.deployments
+      .filter((deployment) => deployment.state === 'failed')
+      .map((deployment) => ({ ...deployment, projectSlug: project.slug, organizationId: project.organizationId })));
+  }
+
+  private createAbuseAction(actor: User, body: Record<string, unknown>): AbuseAction {
+    const targetType = typeof body.targetType === 'string' ? body.targetType : '';
+    const targetId = typeof body.targetId === 'string' ? body.targetId : '';
+    const action = typeof body.action === 'string' ? body.action : '';
+    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'No reason provided.';
+    if (!this.isAbuseTargetType(targetType) || !this.isAbuseAction(action) || !targetId) {
+      throw new Error('Abuse action requires targetType, targetId, and a valid action.');
+    }
+    const abuseAction: AbuseAction = { id: createId('abuse_action'), targetType, targetId, action, reason, createdBy: actor.id, createdAt: nowIso() };
+    this.store.abuseActions.set(abuseAction.id, abuseAction);
+    this.applyAbuseAction(abuseAction);
+    this.audit.record(actor.id, 'platform_admin.abuse_action_created', { targetType, targetId, action, reason });
+    return abuseAction;
+  }
+
+  private applyAbuseAction(abuseAction: AbuseAction): void {
+    if (abuseAction.action !== 'suspend' && abuseAction.action !== 'unsuspend') {
+      return;
+    }
+    const suspendedAt = abuseAction.action === 'suspend' ? abuseAction.createdAt : undefined;
+    const suspensionReason = abuseAction.action === 'suspend' ? abuseAction.reason : undefined;
+    if (abuseAction.targetType === 'user') {
+      const user = this.store.users.get(abuseAction.targetId);
+      if (user) {
+        user.suspendedAt = suspendedAt;
+        user.suspensionReason = suspensionReason;
+      }
+    }
+    if (abuseAction.targetType === 'organization') {
+      const organization = this.store.organizations.get(abuseAction.targetId);
+      if (organization) {
+        organization.suspendedAt = suspendedAt;
+        organization.suspensionReason = suspensionReason;
+      }
+    }
+    if (abuseAction.targetType === 'project') {
+      const project = this.store.projects.get(abuseAction.targetId);
+      if (project) {
+        project.suspendedAt = suspendedAt;
+        project.suspensionReason = suspensionReason;
+      }
+    }
+  }
+
+  private isPlatformAdminRole(role: string): role is PlatformAdminRole {
+    return role === 'support' || role === 'security' || role === 'super_admin';
+  }
+
+  private isAbuseTargetType(targetType: string): targetType is AbuseAction['targetType'] {
+    return targetType === 'user' || targetType === 'organization' || targetType === 'project' || targetType === 'domain';
+  }
+
+  private isAbuseAction(action: string): action is AbuseAction['action'] {
+    return action === 'warn' || action === 'suspend' || action === 'unsuspend' || action === 'restrict_deployments';
   }
 
   private createProject(user: User, body: CreateProjectBody): Project {

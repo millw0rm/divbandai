@@ -1,4 +1,5 @@
 import type {
+  AbuseAction,
   ApiToken,
   AiChangeRequest,
   AuditEvent,
@@ -9,6 +10,7 @@ import type {
   OrganizationMembership,
   Project,
   ProjectEnvironmentSecret,
+  PlatformAdmin,
   ProjectMembership,
   Publish,
   PublishedFile,
@@ -24,6 +26,7 @@ export interface BackendStore {
   passwordHashesByUserId: Map<string, string>;
   sessions: Map<string, AuthSession>;
   apiTokens: Map<string, ApiToken>;
+  platformAdmins: Map<string, PlatformAdmin>;
   organizations: Map<string, Organization>;
   organizationMemberships: Map<string, OrganizationMembership>;
   projects: Map<string, Project>;
@@ -38,6 +41,7 @@ export interface BackendStore {
   publishedVersions: Map<string, PublishedVersion>;
   publishedFiles: PublishedFile[];
   uploadSessions: Map<string, UploadSession>;
+  abuseActions: Map<string, AbuseAction>;
 }
 
 export interface BackendStoreSnapshot {
@@ -46,6 +50,7 @@ export interface BackendStoreSnapshot {
   passwordHashesByUserId: Array<[string, string]>;
   sessions: AuthSession[];
   apiTokens: ApiToken[];
+  platformAdmins: PlatformAdmin[];
   organizations: Organization[];
   organizationMemberships: OrganizationMembership[];
   projects: Project[];
@@ -60,6 +65,7 @@ export interface BackendStoreSnapshot {
   publishedVersions: PublishedVersion[];
   publishedFiles: PublishedFile[];
   uploadSessions: UploadSession[];
+  abuseActions: AbuseAction[];
 }
 
 export interface PersistenceAdapter {
@@ -74,6 +80,7 @@ export function createBackendStore(): BackendStore {
     passwordHashesByUserId: new Map(),
     sessions: new Map(),
     apiTokens: new Map(),
+    platformAdmins: new Map(),
     organizations: new Map(),
     organizationMemberships: new Map(),
     projects: new Map(),
@@ -88,6 +95,7 @@ export function createBackendStore(): BackendStore {
     publishedVersions: new Map(),
     publishedFiles: [],
     uploadSessions: new Map(),
+    abuseActions: new Map(),
   };
 }
 
@@ -98,6 +106,7 @@ export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot 
     passwordHashesByUserId: [...store.passwordHashesByUserId.entries()],
     sessions: [...store.sessions.values()],
     apiTokens: [...store.apiTokens.values()],
+    platformAdmins: [...store.platformAdmins.values()],
     organizations: [...store.organizations.values()],
     organizationMemberships: [...store.organizationMemberships.values()],
     projects: [...store.projects.values()],
@@ -112,6 +121,7 @@ export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot 
     publishedVersions: [...store.publishedVersions.values()],
     publishedFiles: [...store.publishedFiles],
     uploadSessions: [...store.uploadSessions.values()],
+    abuseActions: [...store.abuseActions.values()],
   };
 }
 
@@ -121,6 +131,7 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.passwordHashesByUserId = new Map(snapshot.passwordHashesByUserId);
   store.sessions = new Map((snapshot.sessions ?? []).map((session) => [session.tokenHash, session]));
   store.apiTokens = mapById(snapshot.apiTokens);
+  store.platformAdmins = mapById(snapshot.platformAdmins ?? []);
   store.organizations = mapById(snapshot.organizations);
   store.organizationMemberships = mapById(snapshot.organizationMemberships);
   store.projects = mapById(snapshot.projects.map((project) => {
@@ -138,7 +149,8 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.publishedSites = new Map(snapshot.publishedSites.map((site) => [site.slug, site]));
   store.publishedVersions = mapById(snapshot.publishedVersions);
   store.publishedFiles = [...snapshot.publishedFiles];
-  store.uploadSessions = new Map(snapshot.uploadSessions.map((session) => [session.versionId, session]));
+  store.uploadSessions = new Map((snapshot.uploadSessions ?? []).map((session) => [session.versionId, session]));
+  store.abuseActions = mapById(snapshot.abuseActions ?? []);
   return store;
 }
 

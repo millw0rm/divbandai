@@ -21,7 +21,14 @@ export type DashboardPageId =
   | 'domain-management'
   | 'environment-variables'
   | 'logs-build-history'
-  | 'ai-assistant';
+  | 'ai-assistant'
+  | 'admin-user-org-search'
+  | 'admin-project-lifecycle'
+  | 'admin-dns-certificates'
+  | 'admin-runner-status'
+  | 'admin-failed-deployments'
+  | 'admin-audit-events'
+  | 'admin-abuse-actions';
 
 export interface DashboardPage {
   id: DashboardPageId;
@@ -41,6 +48,47 @@ export interface AuthUser {
   email: string;
   name: string;
   createdAt: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
+  platformAdminRole?: 'support' | 'security' | 'super_admin';
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
+}
+
+export interface PlatformAuditEvent {
+  id: string;
+  actorId: string;
+  action: string;
+  projectId?: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AbuseAction {
+  id: string;
+  targetType: 'user' | 'organization' | 'project' | 'domain';
+  targetId: string;
+  action: 'warn' | 'suspend' | 'unsuspend' | 'restrict_deployments';
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface RunnerHealth {
+  projectId: string;
+  projectSlug: string;
+  runnerTag: string;
+  status: 'idle' | 'active' | 'degraded';
+  latestDeploymentState?: Deployment['state'];
+  checkedAt: string;
 }
 
 export interface AuthSession {
@@ -96,6 +144,7 @@ export interface EnvironmentVariable {
 
 export interface Project {
   id: string;
+  organizationId: string;
   ownerId: string;
   slug: string;
   name: string;
@@ -112,6 +161,8 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
+  suspendedAt?: string;
+  suspensionReason?: string;
 }
 
 export interface ProjectStatusSummary {
@@ -132,6 +183,14 @@ export interface DashboardState {
   statusSummary?: ProjectStatusSummary;
   logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>;
   environmentVariables: EnvironmentVariable[];
+  adminUsers: AuthUser[];
+  adminOrganizations: Organization[];
+  adminProjects: Project[];
+  adminDomains: Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }>;
+  adminRunnerHealth: RunnerHealth[];
+  adminFailedDeployments: Array<Deployment & { projectSlug: string; organizationId: string }>;
+  adminAuditEvents: PlatformAuditEvent[];
+  adminAbuseActions: AbuseAction[];
   assistantMessages: AssistantMessage[];
   aiChangeRequests: AiChangeRequest[];
   loading: boolean;
@@ -217,6 +276,11 @@ export const dashboardSections: DashboardSection[] = [
     title: 'AI assistant preview',
     description: 'Preview/mock post-MVP workflow for reviewed AI change requests.',
   },
+  {
+    id: 'platform-admin',
+    title: 'Platform admin',
+    description: 'Audited support, operations, security, and abuse controls separated from project roles.',
+  },
 ];
 
 export const dashboardPages: DashboardPage[] = [
@@ -230,6 +294,49 @@ export const dashboardPages: DashboardPage[] = [
     id: 'sign-up',
     title: 'Sign up',
     description: 'Create a divband account and first session.',
+    requiresProject: false,
+  },
+
+  {
+    id: 'admin-user-org-search',
+    title: 'Admin: user/org search',
+    description: 'Search users and organizations across the platform.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-project-lifecycle',
+    title: 'Admin: project lifecycle',
+    description: 'Review lifecycle, suspension, and ownership state for all projects.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-dns-certificates',
+    title: 'Admin: DNS/certificates',
+    description: 'Inspect domain verification and certificate status.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-runner-status',
+    title: 'Admin: runner status',
+    description: 'Inspect runner health derived from project runner tags and deployments.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-failed-deployments',
+    title: 'Admin: failed deployments',
+    description: 'Triage failed deployments across projects.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-audit-events',
+    title: 'Admin: audit events',
+    description: 'Review recent platform and project audit events.',
+    requiresProject: false,
+  },
+  {
+    id: 'admin-abuse-actions',
+    title: 'Admin: abuse actions',
+    description: 'Record warnings, suspensions, unsuspensions, and deployment restrictions.',
     requiresProject: false,
   },
   {
@@ -352,6 +459,52 @@ export class DivbandApiClient {
 
   login(input: { email: string; password: string }): Promise<AuthResponse> {
     return this.request<AuthResponse>('/auth/login', { method: 'POST', body: input, authenticated: false });
+  }
+
+
+  async adminSearchUsers(q = ''): Promise<AuthUser[]> {
+    const response = await this.request<{ users: AuthUser[] }>(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+    return response.users;
+  }
+
+  async adminSearchOrganizations(q = ''): Promise<Organization[]> {
+    const response = await this.request<{ organizations: Organization[] }>(`/admin/organizations${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+    return response.organizations;
+  }
+
+  async adminListProjects(): Promise<Project[]> {
+    const response = await this.request<{ projects: Project[] }>('/admin/projects');
+    return response.projects;
+  }
+
+  async adminListDomains(): Promise<Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }>> {
+    const response = await this.request<{ domains: Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }> }>('/admin/domains');
+    return response.domains;
+  }
+
+  async adminRunnerHealth(): Promise<RunnerHealth[]> {
+    const response = await this.request<{ runners: RunnerHealth[] }>('/admin/runners/health');
+    return response.runners;
+  }
+
+  async adminFailedDeployments(): Promise<Array<Deployment & { projectSlug: string; organizationId: string }>> {
+    const response = await this.request<{ deployments: Array<Deployment & { projectSlug: string; organizationId: string }> }>('/admin/deployments/failures');
+    return response.deployments;
+  }
+
+  async adminAuditEvents(): Promise<PlatformAuditEvent[]> {
+    const response = await this.request<{ auditEvents: PlatformAuditEvent[] }>('/admin/audit-events');
+    return response.auditEvents;
+  }
+
+  async adminAbuseActions(): Promise<AbuseAction[]> {
+    const response = await this.request<{ abuseActions: AbuseAction[] }>('/admin/abuse-actions');
+    return response.abuseActions;
+  }
+
+  async createAbuseAction(input: Pick<AbuseAction, 'targetType' | 'targetId' | 'action' | 'reason'>): Promise<AbuseAction> {
+    const response = await this.request<{ abuseAction: AbuseAction }>('/admin/abuse-actions', { method: 'POST', body: input });
+    return response.abuseAction;
   }
 
   async listProjects(): Promise<Project[]> {
@@ -574,6 +727,14 @@ export function createInitialDashboardState(overrides: Partial<DashboardState> =
     projects: [],
     logs: [],
     environmentVariables: [],
+    adminUsers: [],
+    adminOrganizations: [],
+    adminProjects: [],
+    adminDomains: [],
+    adminRunnerHealth: [],
+    adminFailedDeployments: [],
+    adminAuditEvents: [],
+    adminAbuseActions: [],
     assistantMessages: [],
     aiChangeRequests: [],
     loading: false,
@@ -646,6 +807,42 @@ export class DashboardController {
       return;
     }
 
+    if (page === 'admin-user-org-search') {
+      const [adminUsers, adminOrganizations] = await Promise.all([this.api.adminSearchUsers(), this.api.adminSearchOrganizations()]);
+      this.state = { ...this.state, adminUsers, adminOrganizations };
+      return;
+    }
+
+    if (page === 'admin-project-lifecycle') {
+      this.state = { ...this.state, adminProjects: await this.api.adminListProjects() };
+      return;
+    }
+
+    if (page === 'admin-dns-certificates') {
+      this.state = { ...this.state, adminDomains: await this.api.adminListDomains() };
+      return;
+    }
+
+    if (page === 'admin-runner-status') {
+      this.state = { ...this.state, adminRunnerHealth: await this.api.adminRunnerHealth() };
+      return;
+    }
+
+    if (page === 'admin-failed-deployments') {
+      this.state = { ...this.state, adminFailedDeployments: await this.api.adminFailedDeployments() };
+      return;
+    }
+
+    if (page === 'admin-audit-events') {
+      this.state = { ...this.state, adminAuditEvents: await this.api.adminAuditEvents() };
+      return;
+    }
+
+    if (page === 'admin-abuse-actions') {
+      this.state = { ...this.state, adminAbuseActions: await this.api.adminAbuseActions() };
+      return;
+    }
+
     if (page === 'project-list' || page === 'create-project') {
       this.state = { ...this.state, projects: await this.api.listProjects() };
       return;
@@ -699,6 +896,14 @@ export class DashboardController {
         case 'save-environment-variable':
           await this.api.saveEnvironmentVariables(requiredSelectedProjectId(this.state), [{ key: String(data.get('key') ?? ''), value: String(data.get('value') ?? ''), protected: data.get('protected') === 'on' }]);
           return this.navigate('environment-variables', requiredSelectedProjectId(this.state));
+        case 'admin-abuse-action':
+          await this.api.createAbuseAction({
+            targetType: String(data.get('targetType') ?? '') as AbuseAction['targetType'],
+            targetId: String(data.get('targetId') ?? ''),
+            action: String(data.get('abuseAction') ?? '') as AbuseAction['action'],
+            reason: String(data.get('reason') ?? ''),
+          });
+          return this.navigate('admin-abuse-actions');
         case 'assistant-request': {
           const message = await this.api.requestAssistantChange({ projectId: requiredProjectId(form), prompt: String(data.get('prompt') ?? ''), targetBranch: optionalString(data.get('targetBranch')) });
           this.state = { ...this.state, assistantMessages: [...this.state.assistantMessages, message] };
@@ -829,10 +1034,61 @@ function renderCurrentPage(state: DashboardState, selectedProject?: Project): st
       return renderLogsPage(selectedProject, state.logs);
     case 'ai-assistant':
       return renderAssistantPage(selectedProject, state.assistantMessages, state.aiChangeRequests);
+    case 'admin-user-org-search':
+      return renderAdminUserOrgSearchPage(state.adminUsers, state.adminOrganizations);
+    case 'admin-project-lifecycle':
+      return renderAdminProjectLifecyclePage(state.adminProjects);
+    case 'admin-dns-certificates':
+      return renderAdminDnsCertificatesPage(state.adminDomains);
+    case 'admin-runner-status':
+      return renderAdminRunnerStatusPage(state.adminRunnerHealth);
+    case 'admin-failed-deployments':
+      return renderAdminFailedDeploymentsPage(state.adminFailedDeployments);
+    case 'admin-audit-events':
+      return renderAdminAuditEventsPage(state.adminAuditEvents);
+    case 'admin-abuse-actions':
+      return renderAdminAbuseActionsPage(state.adminAbuseActions);
     case 'project-list':
     default:
       return renderProjectListPage(state.projects, selectedProject?.id);
   }
+}
+
+
+function renderAdminUserOrgSearchPage(users: AuthUser[], organizations: Organization[]): string {
+  const userRows = users.length ? users.map((user) => `<tr><td>${escapeHtml(user.email)}</td><td>${escapeHtml(user.name)}</td><td>${escapeHtml(user.platformAdminRole ?? 'none')}</td><td>${escapeHtml(user.suspendedAt ?? 'active')}</td></tr>`).join('') : '<tr><td colspan="4">No users visible or admin access denied.</td></tr>';
+  const orgRows = organizations.length ? organizations.map((org) => `<tr><td>${escapeHtml(org.name)}</td><td>${escapeHtml(org.slug)}</td><td>${escapeHtml(org.suspendedAt ?? 'active')}</td><td>${escapeHtml(org.updatedAt)}</td></tr>`).join('') : '<tr><td colspan="4">No organizations visible or admin access denied.</td></tr>';
+  return `<article class="card"><h2>Admin user/org search</h2><p>Uses audited <code>GET /admin/users</code> and <code>GET /admin/organizations</code>.</p><h3>Users</h3><table><thead><tr><th>Email</th><th>Name</th><th>Platform role</th><th>Status</th></tr></thead><tbody>${userRows}</tbody></table><h3>Organizations</h3><table><thead><tr><th>Name</th><th>Slug</th><th>Status</th><th>Updated</th></tr></thead><tbody>${orgRows}</tbody></table></article>`;
+}
+
+function renderAdminProjectLifecyclePage(projects: Project[]): string {
+  const rows = projects.length ? projects.map((project) => `<tr><td>${escapeHtml(project.name)}</td><td>${escapeHtml(project.slug)}</td><td>${escapeHtml(getLifecycleLabel(project.status))}</td><td>${escapeHtml(project.suspendedAt ?? 'active')}</td><td>${escapeHtml(project.updatedAt)}</td></tr>`).join('') : '<tr><td colspan="5">No projects.</td></tr>';
+  return `<article class="card"><h2>Project lifecycle overview</h2><p>Uses audited <code>GET /admin/projects</code>.</p><table><thead><tr><th>Name</th><th>Slug</th><th>Lifecycle</th><th>Status</th><th>Updated</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+function renderAdminDnsCertificatesPage(domains: Array<ProjectDomain & { projectId: string; projectSlug: string; organizationId: string }>): string {
+  const rows = domains.length ? domains.map((domain) => `<tr><td>${escapeHtml(domain.hostname)}</td><td>${escapeHtml(domain.projectSlug)}</td><td>${domain.verified ? 'verified' : 'pending'}</td><td>${escapeHtml(domain.certificateStatus)}</td><td>${escapeHtml(domain.verifiedAt ?? 'not verified')}</td></tr>`).join('') : '<tr><td colspan="5">No domains.</td></tr>';
+  return `<article class="card"><h2>DNS/certificate status</h2><p>Uses audited <code>GET /admin/domains</code>.</p><table><thead><tr><th>Hostname</th><th>Project</th><th>DNS</th><th>Certificate</th><th>Verified at</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+function renderAdminRunnerStatusPage(runners: RunnerHealth[]): string {
+  const rows = runners.length ? runners.map((runner) => `<tr><td>${escapeHtml(runner.runnerTag)}</td><td>${escapeHtml(runner.projectSlug)}</td><td>${escapeHtml(runner.status)}</td><td>${escapeHtml(runner.latestDeploymentState ?? 'none')}</td><td>${escapeHtml(runner.checkedAt)}</td></tr>`).join('') : '<tr><td colspan="5">No runner tags.</td></tr>';
+  return `<article class="card"><h2>Runner status</h2><p>Uses audited <code>GET /admin/runners/health</code>.</p><table><thead><tr><th>Runner tag</th><th>Project</th><th>Health</th><th>Latest deployment</th><th>Checked</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+function renderAdminFailedDeploymentsPage(deployments: Array<Deployment & { projectSlug: string; organizationId: string }>): string {
+  const rows = deployments.length ? deployments.map((deployment) => `<tr><td>${escapeHtml(deployment.id)}</td><td>${escapeHtml(deployment.projectSlug)}</td><td>${escapeHtml(deployment.gitRef)}</td><td>${escapeHtml(deployment.finishedAt ?? 'unfinished')}</td><td>${escapeHtml(deployment.jobUrl ?? 'n/a')}</td></tr>`).join('') : '<tr><td colspan="5">No failed deployments.</td></tr>';
+  return `<article class="card"><h2>Failed deployments</h2><p>Uses audited <code>GET /admin/deployments/failures</code>.</p><table><thead><tr><th>Deployment</th><th>Project</th><th>Git ref</th><th>Finished</th><th>Job</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+function renderAdminAuditEventsPage(events: PlatformAuditEvent[]): string {
+  const rows = events.length ? events.map((event) => `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorId)}</td><td>${escapeHtml(event.action)}</td><td>${escapeHtml(event.projectId ?? 'platform')}</td></tr>`).join('') : '<tr><td colspan="4">No audit events.</td></tr>';
+  return `<article class="card"><h2>Audit events</h2><p>Uses audited <code>GET /admin/audit-events</code>; route access is also written back to audit logs.</p><table><thead><tr><th>Created</th><th>Actor</th><th>Action</th><th>Scope</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+function renderAdminAbuseActionsPage(actions: AbuseAction[]): string {
+  const rows = actions.length ? actions.map((action) => `<tr><td>${escapeHtml(action.createdAt)}</td><td>${escapeHtml(action.targetType)}</td><td>${escapeHtml(action.targetId)}</td><td>${escapeHtml(action.action)}</td><td>${escapeHtml(action.reason)}</td></tr>`).join('') : '<tr><td colspan="5">No abuse actions.</td></tr>';
+  return `<article class="card"><h2>Abuse/suspension actions</h2><p>Uses audited <code>GET/POST /admin/abuse-actions</code>.</p><form data-action="admin-abuse-action"><label>Target type <select name="targetType"><option>user</option><option>organization</option><option>project</option><option>domain</option></select></label><label>Target ID <input name="targetId" required></label><label>Action <select name="abuseAction"><option>warn</option><option>suspend</option><option>unsuspend</option><option>restrict_deployments</option></select></label><label>Reason <input name="reason" required></label><button type="submit">Record abuse action</button></form><table><thead><tr><th>Created</th><th>Type</th><th>Target</th><th>Action</th><th>Reason</th></tr></thead><tbody>${rows}</tbody></table></article>`;
 }
 
 function renderSignInPage(): string {

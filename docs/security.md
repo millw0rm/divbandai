@@ -202,3 +202,21 @@ Runner requirements:
 - Run untrusted build steps without production deploy credentials.
 - Prefer ephemeral runner environments and clean workspaces after every job.
 - Limit registry, Kubernetes, and secret-manager permissions to the current project.
+
+## Platform administrator model
+
+Divband separates platform administration from tenant/project authorization. Project roles (`owner`, `admin`, `developer`, and `viewer`) only grant permissions within a project membership; they do not grant access to platform-wide support, security, operations, or abuse routes. Platform administrators are stored as a separate identity binding with a platform role (`support`, `security`, or `super_admin`) and are attached to an authenticated user session independently of project memberships.
+
+The MVP bootstrap grants the first registered user `super_admin` when no platform administrator exists. After bootstrap, platform administrators can grant or revoke platform administrator bindings through audited `/admin/platform-admins` endpoints. API tokens remain scoped by user/project membership and do not create project access elevation: project authorization continues to call project membership checks, while `/admin/*` routes require an active platform administrator binding.
+
+All `/admin/*` routes are admin-only and audit route access. Current audited surfaces include:
+
+- `GET /admin/users` and `GET /admin/organizations` for support search.
+- `GET /admin/projects` for lifecycle and suspension visibility.
+- `GET /admin/domains` for DNS verification and certificate state.
+- `GET /admin/runners/health` for runner health summaries.
+- `GET /admin/deployments/failures` for deployment failure triage.
+- `GET /admin/audit-events` for recent audit review.
+- `GET/POST /admin/abuse-actions` for warning, suspension, unsuspension, and deployment restriction records.
+
+Abuse and suspension actions are also stored independently from project roles. A platform administrator can suspend a user, organization, or project without becoming a project owner/admin and without mutating project memberships.

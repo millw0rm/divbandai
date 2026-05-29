@@ -217,3 +217,19 @@ keeps per-project modules as contracts to avoid duplicate ownership.
 - If certificate issuance stays pending, inspect cert-manager `Certificate`,
   `CertificateRequest`, `Order`, and `Challenge` resources and confirm the
   ingress or Gateway route references the expected hostname and TLS secret.
+
+## Platform administration operations
+
+Platform operations are performed through audited `/admin/*` API routes and the dashboard pages prefixed with `Admin:`. Operators must authenticate as normal users and have an active platform administrator binding; project owners or project admins are intentionally denied unless they also hold a platform administrator binding.
+
+Recommended operational workflow:
+
+1. Bootstrap the first `super_admin` by registering the initial account in a fresh environment, then grant named platform administrators with `POST /admin/platform-admins`.
+2. Use **Admin: user/org search** for support lookup before changing tenant state.
+3. Use **Admin: project lifecycle** to inspect archived, failed, or suspended projects across organizations.
+4. Use **Admin: DNS/certificates** and **Admin: runner status** during incident response for certificate issuance, DNS verification, and runner health.
+5. Use **Admin: failed deployments** to triage failed jobs before contacting a tenant.
+6. Use **Admin: audit events** to verify operator actions and project changes.
+7. Use **Admin: abuse actions** to record warnings, suspensions, unsuspensions, or deployment restrictions. Every action should include a human-readable reason suitable for support review.
+
+Admin route reads and writes are audit-recorded with the actor ID and route path. Suspension state is stored on the target record while the abuse action remains immutable history, so incident reviews can reconstruct who acted, what changed, and why.
