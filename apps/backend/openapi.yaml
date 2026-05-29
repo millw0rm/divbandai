@@ -42,6 +42,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
+  /auth/oauth-identities:
+    post:
+      summary: Link an optional OAuth/OIDC identity to the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OAuthIdentityLinkRequest'
+      responses:
+        '201':
+          description: OAuth/OIDC identity linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identity:
+                    $ref: '#/components/schemas/OAuthIdentity'
+  /auth/gitlab-identity:
+    post:
+      summary: Link a GitLab identity for generated repository access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitLabIdentityLinkRequest'
+      responses:
+        '201':
+          description: GitLab identity linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gitlabIdentity:
+                    $ref: '#/components/schemas/GitLabIdentityLink'
+  /organizations:
+    get:
+      summary: List organizations visible to the current user
+      responses:
+        '200':
+          description: Organization list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organizations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+    post:
+      summary: Create an organization/team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  organization:
+                    $ref: '#/components/schemas/Organization'
   /projects:
     get:
       summary: List projects visible to the current user
@@ -114,6 +185,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProjectStatusSummary'
+  /projects/{projectId}/members:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      summary: List project memberships
+      responses:
+        '200':
+          description: Project members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProjectMembership'
+    put:
+      summary: Add or update a project membership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertProjectMemberRequest'
+      responses:
+        '200':
+          description: Project membership updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member:
+                    $ref: '#/components/schemas/ProjectMembership'
+  /projects/{projectId}/api-tokens:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      summary: Create a project-scoped API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiTokenRequest'
+      responses:
+        '201':
+          description: API token created; token secret is returned once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiToken:
+                    $ref: '#/components/schemas/ApiToken'
+                  token:
+                    type: string
   /projects/{projectId}/gitlab-repository:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -403,9 +532,20 @@ components:
           type: string
         userId:
           type: string
+        createdAt:
+          type: string
+          format: date-time
         expiresAt:
           type: string
           format: date-time
+        lastSeenAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        oauthProvider:
+          type: string
     CreateProjectRequest:
       type: object
       properties:
@@ -413,6 +553,154 @@ components:
           type: string
         slug:
           type: string
+        organizationId:
+          type: string
+    ProjectRole:
+      type: string
+      enum: [owner, admin, developer, viewer]
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+    ProjectMembership:
+      type: object
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        userId:
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    UpsertProjectMemberRequest:
+      type: object
+      required: [userId, role]
+      properties:
+        userId:
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+    CreateApiTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        expiresAt:
+          type: string
+          format: date-time
+    ApiToken:
+      type: object
+      description: Token hash is never returned; the plaintext token is returned only once on creation.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        userId:
+          type: string
+        projectId:
+          type: string
+        role:
+          $ref: '#/components/schemas/ProjectRole'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+    OAuthIdentityLinkRequest:
+      type: object
+      required: [provider, issuer, subject]
+      properties:
+        provider:
+          type: string
+          enum: [oauth, oidc]
+        issuer:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+          format: email
+    OAuthIdentity:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        provider:
+          type: string
+          enum: [oauth, oidc]
+        issuer:
+          type: string
+        subject:
+          type: string
+        email:
+          type: string
+        linkedAt:
+          type: string
+          format: date-time
+    GitLabIdentityLinkRequest:
+      type: object
+      required: [gitlabUserId, username]
+      properties:
+        gitlabUserId:
+          type: string
+        username:
+          type: string
+        accessToken:
+          type: string
+          description: Stored hashed or in a secret manager; never returned.
+    GitLabIdentityLink:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        gitlabUserId:
+          type: string
+        username:
+          type: string
+        linkedAt:
+          type: string
+          format: date-time
     ProjectStatus:
       type: string
       enum:
@@ -429,6 +717,8 @@ components:
       type: object
       properties:
         id:
+          type: string
+        organizationId:
           type: string
         ownerId:
           type: string
