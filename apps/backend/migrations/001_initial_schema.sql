@@ -122,6 +122,9 @@ CREATE TABLE IF NOT EXISTS domains (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   last_checked_at TEXT,
+  delegation_checked_at TEXT,
+  delegation_verified_at TEXT,
+  delegation_failed_at TEXT,
   verified_at TEXT,
   disabled_at TEXT,
   failure_reason TEXT

@@ -599,6 +599,28 @@ paths:
                 properties:
                   domain:
                     $ref: '#/components/schemas/ProjectDomain'
+                  setup:
+                    $ref: '#/components/schemas/DelegatedDnsSetup'
+  /projects/{projectId}/domains/{domainId}/dns-setup:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - name: domainId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Return delegated DNS setup instructions and verification state for a custom domain
+      responses:
+        '200':
+          description: Delegated DNS setup instructions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup:
+                    $ref: '#/components/schemas/DelegatedDnsSetup'
   /projects/{projectId}/domains/{domainId}/verify:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -628,6 +650,8 @@ paths:
                 properties:
                   domain:
                     $ref: '#/components/schemas/ProjectDomain'
+                  setup:
+                    $ref: '#/components/schemas/DelegatedDnsSetup'
   /projects/{projectId}/deployments:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
@@ -1790,6 +1814,8 @@ components:
                 $ref: '#/components/schemas/CertificateState'
               failureReason:
                 type: string
+              dnsSetup:
+                $ref: '#/components/schemas/DelegatedDnsSetup'
         latestDeployment:
           $ref: '#/components/schemas/Deployment'
     GitLabRepository:
@@ -1853,6 +1879,52 @@ components:
           enum: [ownership_verification, traffic_routing, zone_delegation]
         required:
           type: boolean
+    DelegatedDnsSetup:
+      type: object
+      required: [mode, assignedNameservers, delegationStatus, verificationStatus, dnsInstructions, propagationGuidance, nextSteps, createdAt, updatedAt]
+      properties:
+        mode:
+          $ref: '#/components/schemas/DomainDnsMode'
+        providerZoneId:
+          type: string
+        assignedNameservers:
+          type: array
+          items:
+            type: string
+        delegationStatus:
+          $ref: '#/components/schemas/DomainDelegationStatus'
+        verificationStatus:
+          $ref: '#/components/schemas/DomainVerificationStatus'
+        failureReason:
+          type: string
+        dnsInstructions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainDnsInstruction'
+        propagationGuidance:
+          type: string
+        nextSteps:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastCheckedAt:
+          type: string
+          format: date-time
+        delegationCheckedAt:
+          type: string
+          format: date-time
+        delegationVerifiedAt:
+          type: string
+          format: date-time
+        delegationFailedAt:
+          type: string
+          format: date-time
     CertificateState:
       type: string
       enum: [not_requested, pending, issued, failed]
@@ -1906,6 +1978,15 @@ components:
           type: string
           format: date-time
         lastCheckedAt:
+          type: string
+          format: date-time
+        delegationCheckedAt:
+          type: string
+          format: date-time
+        delegationVerifiedAt:
+          type: string
+          format: date-time
+        delegationFailedAt:
           type: string
           format: date-time
         verifiedAt:

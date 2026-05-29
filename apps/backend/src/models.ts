@@ -184,6 +184,24 @@ export interface DomainDnsInstruction {
   required: boolean;
 }
 
+export interface DelegatedDnsSetup {
+  mode: DomainDnsMode;
+  providerZoneId?: string;
+  assignedNameservers: string[];
+  delegationStatus: DomainDelegationStatus;
+  verificationStatus: DomainVerificationStatus;
+  failureReason?: string;
+  dnsInstructions: DomainDnsInstruction[];
+  propagationGuidance: string;
+  nextSteps: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastCheckedAt?: string;
+  delegationCheckedAt?: string;
+  delegationVerifiedAt?: string;
+  delegationFailedAt?: string;
+}
+
 export interface ProjectDomain {
   id: string;
   hostname: string;
@@ -204,6 +222,9 @@ export interface ProjectDomain {
   createdAt: string;
   updatedAt: string;
   lastCheckedAt?: string;
+  delegationCheckedAt?: string;
+  delegationVerifiedAt?: string;
+  delegationFailedAt?: string;
   verifiedAt?: string;
   disabledAt?: string;
   failureReason?: string;

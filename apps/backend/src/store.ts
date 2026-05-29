@@ -182,7 +182,7 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
 }
 
 function normalizeProjectDomain(domain: Project['domains'][number], platformHostname: string): Project['domains'][number] {
-  const legacyDomain = domain as Project['domains'][number] & { dnsMode?: Project['domains'][number]['dnsMode']; status?: Project['domains'][number]['status']; verificationStatus?: Project['domains'][number]['verificationStatus']; verificationName?: string; verificationValue?: string; assignedNameservers?: string[]; delegationStatus?: Project['domains'][number]['delegationStatus']; dnsInstructions?: Project['domains'][number]['dnsInstructions']; updatedAt?: string };
+  const legacyDomain = domain as Project['domains'][number] & { dnsMode?: Project['domains'][number]['dnsMode']; status?: Project['domains'][number]['status']; verificationStatus?: Project['domains'][number]['verificationStatus']; verificationName?: string; verificationValue?: string; assignedNameservers?: string[]; delegationStatus?: Project['domains'][number]['delegationStatus']; dnsInstructions?: Project['domains'][number]['dnsInstructions']; delegationCheckedAt?: string; delegationVerifiedAt?: string; delegationFailedAt?: string; updatedAt?: string };
   const dnsMode = legacyDomain.dnsMode ?? (legacyDomain.hostname.split('.').length === 2 ? 'apex' : 'custom_cname');
   const verificationName = legacyDomain.verificationName ?? legacyDomain.verificationRecord.split(' TXT ')[0] ?? `_divband.${legacyDomain.hostname}`;
   const verificationValue = legacyDomain.verificationValue ?? legacyDomain.verificationRecord.split(' TXT ')[1] ?? `divband-verification=${legacyDomain.verificationToken}`;

@@ -18,6 +18,7 @@ import type {
   DomainDnsInstruction,
   DomainDnsMode,
   DomainDelegationStatus,
+  DelegatedDnsSetup,
   EnvironmentVariable,
   GitLabIdentityLink,
   OAuthIdentity,
@@ -317,12 +318,20 @@ export class BackendService {
 
         if (method === 'POST' && this.matches(route, 'projects', projectId, 'domains')) {
           const { project } = this.requireProject(projectId, actor, 'domain:manage');
-          return this.created({ domain: await this.addCustomDomain(project, user, this.requiredObject(request.body)) }, 202);
+          const domain = await this.addCustomDomain(project, user, this.requiredObject(request.body));
+          return this.created({ domain, setup: this.delegatedDnsSetup(domain) }, 202);
+        }
+
+        if (method === 'GET' && route.segments[2] === 'domains' && route.segments[3] && route.segments[4] === 'dns-setup') {
+          const { project } = this.requireProject(projectId, actor, 'domain:manage');
+          const domain = this.requireDomain(project, route.segments[3]);
+          return this.ok({ setup: this.delegatedDnsSetup(domain) });
         }
 
         if (method === 'POST' && route.segments[2] === 'domains' && route.segments[3] && route.segments[4] === 'verify') {
           const { project } = this.requireProject(projectId, actor, 'domain:manage');
-          return this.ok({ domain: await this.verifyCustomDomain(project, user, route.segments[3], this.optionalObject(request.body)) });
+          const domain = await this.verifyCustomDomain(project, user, route.segments[3], this.optionalObject(request.body));
+          return this.ok({ domain, setup: this.delegatedDnsSetup(domain) });
         }
 
         if (method === 'POST' && this.matches(route, 'projects', projectId, 'deployments')) {
@@ -784,14 +793,21 @@ export class BackendService {
     domain.lastCheckedAt = nowIso();
 
     if (this.isDelegatedDnsMode(domain.dnsMode)) {
+      const checkedAt = nowIso();
       const delegation = await this.dns.verifyDelegation(domain.hostname, domain.assignedNameservers);
       domain.delegationStatus = delegation.verified ? 'verified' : 'failed';
+      domain.delegationCheckedAt = checkedAt;
+      if (delegation.verified) {
+        domain.delegationVerifiedAt = checkedAt;
+        domain.delegationFailedAt = undefined;
+      }
       if (!delegation.verified) {
         const reason = delegation.reason ?? 'DNS delegation verification failed.';
         domain.verificationStatus = 'failed';
         domain.status = 'failed';
         domain.failureReason = reason;
-        domain.updatedAt = nowIso();
+        domain.delegationFailedAt = checkedAt;
+        domain.updatedAt = checkedAt;
         throw new Error(reason);
       }
     }
@@ -1354,7 +1370,40 @@ export class BackendService {
   }
 
 
-  private domainStatusResponse(domain: ProjectDomain): Pick<ProjectDomain, 'id' | 'hostname' | 'dnsMode' | 'status' | 'verificationStatus' | 'assignedNameservers' | 'delegationStatus' | 'certificateStatus' | 'failureReason'> & { mode: DomainDnsMode } {
+  private delegatedDnsSetup(domain: ProjectDomain): DelegatedDnsSetup {
+    const isDelegated = this.isDelegatedDnsMode(domain.dnsMode);
+    const nextSteps = isDelegated
+      ? [
+        `Create or replace NS records for ${domain.hostname} at the parent zone with the assigned managed-provider nameservers.`,
+        'Wait for registrar and resolver propagation, then run domain verification again.',
+        'After delegation and ownership verification pass, Divband manages app, wildcard, and ACME challenge records in the provider zone.',
+      ]
+      : [
+        'Publish the required ownership and traffic-routing DNS records shown in dnsInstructions.',
+        'Wait for DNS propagation, then run domain verification again.',
+      ];
+    return {
+      mode: domain.dnsMode,
+      providerZoneId: domain.providerZoneId,
+      assignedNameservers: domain.assignedNameservers,
+      delegationStatus: domain.delegationStatus,
+      verificationStatus: domain.verificationStatus,
+      failureReason: domain.failureReason,
+      dnsInstructions: domain.dnsInstructions,
+      propagationGuidance: isDelegated
+        ? 'Delegation can take minutes to hours depending on registrar and parent-zone TTLs; verification checks public resolvers and authoritative parent nameservers for the exact NS set.'
+        : 'DNS changes can take minutes to hours depending on provider TTLs; verification checks for the required ownership TXT record before activating the domain.',
+      nextSteps,
+      createdAt: domain.createdAt,
+      updatedAt: domain.updatedAt,
+      lastCheckedAt: domain.lastCheckedAt,
+      delegationCheckedAt: domain.delegationCheckedAt,
+      delegationVerifiedAt: domain.delegationVerifiedAt,
+      delegationFailedAt: domain.delegationFailedAt,
+    };
+  }
+
+  private domainStatusResponse(domain: ProjectDomain): Pick<ProjectDomain, 'id' | 'hostname' | 'dnsMode' | 'status' | 'verificationStatus' | 'assignedNameservers' | 'delegationStatus' | 'certificateStatus' | 'failureReason'> & { mode: DomainDnsMode; dnsSetup: DelegatedDnsSetup } {
     return {
       id: domain.id,
       hostname: domain.hostname,
@@ -1366,6 +1415,7 @@ export class BackendService {
       delegationStatus: domain.delegationStatus,
       certificateStatus: domain.certificateStatus,
       failureReason: domain.failureReason,
+      dnsSetup: this.delegatedDnsSetup(domain),
     };
   }
 
