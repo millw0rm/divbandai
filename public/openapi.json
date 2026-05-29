@@ -216,7 +216,7 @@
       ],
       "post": {
         "summary": "Finalize an uploaded publish version",
-        "description": "Marks the uploaded version as live for the publish slug.",
+        "description": "Verifies the upload session has not expired, scanner status allows publishing, and each manifest object exists in storage with matching size and checksum before atomically making the version live.",
         "security": [
           {
             "bearerAuth": []
@@ -1610,6 +1610,10 @@
           "anonymous": {
             "type": "boolean",
             "description": "When true with bearer authentication, create a claimable anonymous publish instead of immediately assigning ownership to the caller."
+          },
+          "slug": {
+            "type": "string",
+            "description": "Optional requested slug. The API normalizes this value and rejects conflicts before upload URLs are issued."
           }
         }
       },
@@ -1762,6 +1766,27 @@
           },
           "expiresInSeconds": {
             "type": "integer"
+          },
+          "storageBucket": {
+            "type": "string",
+            "description": "Object storage bucket scoped into the presigned upload URL."
+          },
+          "storageKey": {
+            "type": "string",
+            "description": "Staging object key that must be uploaded before finalize."
+          },
+          "checksumSha256": {
+            "type": "string",
+            "description": "SHA-256 checksum bound to the upload URL and checked during finalize."
+          },
+          "contentLength": {
+            "type": "integer",
+            "description": "Exact byte length bound to the upload URL and checked during finalize."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Short-lived upload URL expiry timestamp."
           }
         }
       },

@@ -39,11 +39,18 @@ paths:
                       uploads:
                         - path: index.html
                           method: PUT
-                          url: https://uploads.divband.local/sha256-demo/index.html
+                          url: https://uploads.divband.local/divband-local/staging/docs-8f4d9e2c1a7b5c6d0e9f1234/publish_version_lx000001_1/index.html?bucket=divband-local
                           headers:
                             content-type: text/html
+                            content-length: '128'
+                            x-amz-checksum-sha256: sha256-demo
                             x-divband-content-sha256: sha256-demo
                           expiresInSeconds: 900
+                          storageBucket: divband-local
+                          storageKey: staging/docs-8f4d9e2c1a7b5c6d0e9f1234/publish_version_lx000001_1/index.html
+                          checksumSha256: sha256-demo
+                          contentLength: 128
+                          expiresAt: '2026-05-29T12:15:00.000Z'
                       skipped: []
                     finalizeUrl: https://api.divband.local/api/v1/publish/docs-8f4d9e2c1a7b5c6d0e9f1234/finalize
                     expiresInSeconds: 86400
@@ -60,11 +67,18 @@ paths:
                       uploads:
                         - path: index.html
                           method: PUT
-                          url: https://uploads.divband.local/sha256-demo/index.html
+                          url: https://uploads.divband.local/divband-local/staging/docs-41852c3e7f6a9b0d1c2e3f4a/publish_version_lx000002_2/index.html?bucket=divband-local
                           headers:
                             content-type: text/html
+                            content-length: '128'
+                            x-amz-checksum-sha256: sha256-demo
                             x-divband-content-sha256: sha256-demo
                           expiresInSeconds: 900
+                          storageBucket: divband-local
+                          storageKey: staging/docs-41852c3e7f6a9b0d1c2e3f4a/publish_version_lx000002_2/index.html
+                          checksumSha256: sha256-demo
+                          contentLength: 128
+                          expiresAt: '2026-05-29T12:15:00.000Z'
                       skipped: []
                     finalizeUrl: https://api.divband.local/api/v1/publish/docs-41852c3e7f6a9b0d1c2e3f4a/finalize
                     expiresInSeconds: 86400
@@ -133,7 +147,7 @@ paths:
       - $ref: '#/components/parameters/PublishSlug'
     post:
       summary: Finalize an uploaded publish version
-      description: Marks the uploaded version as live for the publish slug.
+      description: Verifies the upload session has not expired, scanner status allows publishing, and each manifest object exists in storage with matching size and checksum before atomically making the version live.
       security:
         - bearerAuth: []
         - {}
@@ -926,6 +940,9 @@ components:
       type: object
       required: [files]
       properties:
+        slug:
+          type: string
+          description: Optional requested slug. The API normalizes this value and rejects conflicts before upload URLs are issued.
         files:
           type: array
           minItems: 1
@@ -1038,6 +1055,22 @@ components:
             type: string
         expiresInSeconds:
           type: integer
+        storageBucket:
+          type: string
+          description: Object storage bucket scoped into the presigned upload URL.
+        storageKey:
+          type: string
+          description: Staging object key that must be uploaded before finalize.
+        checksumSha256:
+          type: string
+          description: SHA-256 checksum bound to the upload URL and checked during finalize.
+        contentLength:
+          type: integer
+          description: Exact byte length bound to the upload URL and checked during finalize.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Short-lived upload URL expiry timestamp.
     PublishVersion:
       type: object
       properties:

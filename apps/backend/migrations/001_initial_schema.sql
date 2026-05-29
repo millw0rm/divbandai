@@ -181,6 +181,16 @@ CREATE TABLE IF NOT EXISTS published_versions (
   finalized_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS upload_sessions (
+  version_id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  uploads_json TEXT NOT NULL,
+  skipped_json TEXT NOT NULL,
+  scanner_status TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS files (
   site_id TEXT NOT NULL REFERENCES published_sites(id) ON DELETE CASCADE,
   version_id TEXT NOT NULL REFERENCES published_versions(id) ON DELETE CASCADE,

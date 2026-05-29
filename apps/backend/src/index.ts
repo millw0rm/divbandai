@@ -15,5 +15,7 @@ export { GitLabService } from './services/gitlab.ts';
 export { KubernetesService } from './services/kubernetes.ts';
 export { StaticServingService } from './services/static-serving.ts';
 export { PublishExpiryService } from './services/publish-expiry.ts';
+export { InMemoryObjectStorage } from './services/object-storage.ts';
 export type { StaticServeRequest, StaticServeResolution, StaticServingOptions } from './services/static-serving.ts';
 export type { PublishExpiryCleanupResult } from './services/publish-expiry.ts';
+export type { ObjectStorage, ObjectStorageOptions, StoredObjectMetadata } from './services/object-storage.ts';

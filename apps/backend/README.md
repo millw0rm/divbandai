@@ -38,6 +38,8 @@ The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's bu
 | `OBJECT_STORAGE_ACCESS_KEY_ID` | `minioadmin` | Optional object storage access key. |
 | `OBJECT_STORAGE_SECRET_ACCESS_KEY` | `minioadmin` | Optional object storage secret key. |
 | `OBJECT_STORAGE_FORCE_PATH_STYLE` | `true` | Optional boolean for S3-compatible local services. |
+| `OBJECT_STORAGE_STAGING_PREFIX` | `staging` | Non-public prefix used for pending publish uploads. |
+| `OBJECT_STORAGE_LIVE_PREFIX` | `sites` | Prefix used for immutable live static-site versions. |
 | `PORT` | `3000` | Optional HTTP port; defaults to `3000`. |
 
 ### Start the server

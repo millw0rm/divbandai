@@ -163,6 +163,11 @@ export interface PublishUploadPlan {
   url: string;
   headers: Record<string, string>;
   expiresInSeconds: number;
+  storageBucket: string;
+  storageKey: string;
+  checksumSha256: string;
+  contentLength: number;
+  expiresAt: string;
 }
 
 export interface PublishVersion {
@@ -188,6 +193,7 @@ export interface Publish {
 }
 
 export interface PublishRequest {
+  slug?: string;
   files: PublishFileManifest[];
   ttlSeconds?: number;
   viewer?: string;
@@ -247,9 +253,12 @@ export interface PublishedFile {
 
 export interface UploadSession {
   versionId: string;
+  slug: string;
   expiresAt: string;
   uploads: PublishUploadPlan[];
   skipped: PublishFileManifest[];
+  scannerStatus: 'pending' | 'clean' | 'failed';
+  createdAt: string;
 }
 
 

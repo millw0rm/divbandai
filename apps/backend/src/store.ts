@@ -125,7 +125,7 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.auditEvents = [...snapshot.auditEvents];
   store.aiChangeRequests = mapById(snapshot.aiChangeRequests);
   store.publishes = new Map(snapshot.publishes.map((publish) => [publish.slug, publish]));
-  store.publishedSites = mapById(snapshot.publishedSites);
+  store.publishedSites = new Map(snapshot.publishedSites.map((site) => [site.slug, site]));
   store.publishedVersions = mapById(snapshot.publishedVersions);
   store.publishedFiles = [...snapshot.publishedFiles];
   store.uploadSessions = new Map(snapshot.uploadSessions.map((session) => [session.versionId, session]));

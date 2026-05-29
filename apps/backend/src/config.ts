@@ -7,6 +7,8 @@ export interface ObjectStorageConfig {
   accessKeyId?: string;
   secretAccessKey?: string;
   forcePathStyle: boolean;
+  stagingPrefix: string;
+  livePrefix: string;
 }
 
 export interface BackendRuntimeConfig {
@@ -39,6 +41,8 @@ export function loadBackendConfig(env: Record<string, string | undefined> = proc
       accessKeyId: emptyToUndefined(env.OBJECT_STORAGE_ACCESS_KEY_ID),
       secretAccessKey: emptyToUndefined(env.OBJECT_STORAGE_SECRET_ACCESS_KEY),
       forcePathStyle: boolean(env.OBJECT_STORAGE_FORCE_PATH_STYLE, false),
+      stagingPrefix: env.OBJECT_STORAGE_STAGING_PREFIX?.trim() || 'staging',
+      livePrefix: env.OBJECT_STORAGE_LIVE_PREFIX?.trim() || 'sites',
     },
   };
 }

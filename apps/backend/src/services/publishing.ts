@@ -6,19 +6,36 @@ import type {
   PublishResponse,
   PublishUploadPlan,
   PublishVersion,
+  PublishedSite,
+  UploadSession,
 } from '../models.ts';
 import type { BackendStore } from '../store.ts';
 import { PUBLISHING_LIMITS } from '../publishing/limits.ts';
 import { createId, normalizeSlug, nowIso } from '../utils.ts';
+import { InMemoryObjectStorage, type ObjectStorage } from './object-storage.ts';
+
+export interface PublishingServiceOptions {
+  apiBaseUrl?: string;
+  publicSiteDomain?: string;
+  objectStorage?: ObjectStorage;
+}
 
 export class PublishingService {
-  constructor(private readonly store: BackendStore) {}
+  private readonly apiBaseUrl: string;
+  private readonly publicSiteDomain: string;
+  private readonly objectStorage: ObjectStorage;
+
+  constructor(private readonly store: BackendStore, options: PublishingServiceOptions = {}) {
+    this.apiBaseUrl = options.apiBaseUrl ?? 'https://api.divband.local';
+    this.publicSiteDomain = options.publicSiteDomain ?? 'divband.site';
+    this.objectStorage = options.objectStorage ?? new InMemoryObjectStorage();
+  }
 
   async create(input: PublishRequest, actor?: AuthActor): Promise<PublishResponse> {
     const files = this.filesFromInput(input.files);
     this.requireWithinLimits(files);
     const timestamp = nowIso();
-    const slug = this.uniqueSlug(this.slugFromFiles(files));
+    const slug = this.reserveSlug(input.slug, this.slugFromFiles(files));
     const anonymous = !actor || input.anonymous === true;
     const ttlSeconds = this.ttlSeconds(input.ttlSeconds);
     const expiresAt = anonymous ? this.expiresAt(ttlSeconds) : undefined;
@@ -37,8 +54,10 @@ export class PublishingService {
       updatedAt: timestamp,
     };
 
+    const uploads = this.uploadPlan(slug, version.id, files);
     this.store.publishes.set(slug, publish);
-    return this.responseFor(publish, version, this.uploadPlan(files), [], claimToken);
+    this.store.uploadSessions.set(version.id, this.uploadSession(publish, version.id, uploads, [], timestamp));
+    return this.responseFor(publish, version, uploads, [], claimToken);
   }
 
   async update(slug: string, input: PublishRequest & { claimToken?: unknown }, actor?: AuthActor): Promise<PublishResponse> {
@@ -63,10 +82,12 @@ export class PublishingService {
     }
     publish.updatedAt = nowIso();
 
-    return this.responseFor(publish, version, this.uploadPlan(uploads), skipped);
+    const uploadPlans = this.uploadPlan(publish.slug, version.id, uploads);
+    this.store.uploadSessions.set(version.id, this.uploadSession(publish, version.id, uploadPlans, skipped, version.createdAt));
+    return this.responseFor(publish, version, uploadPlans, skipped);
   }
 
-  finalize(slug: string, versionId: unknown): Publish {
+  async finalize(slug: string, versionId: unknown): Promise<Publish> {
     if (typeof versionId !== 'string' || !versionId.trim()) {
       throw new Error('versionId is required.');
     }
@@ -77,10 +98,36 @@ export class PublishingService {
       throw new Error('Publish version not found.');
     }
 
+    if (version.status === 'live' && publish.liveVersionId === version.id) {
+      return publish;
+    }
+
+    const session = this.requireUploadSession(version.id);
+    this.requireSessionReady(session);
+    await this.verifyManifestObjects(version.files, session);
+
+    const timestamp = nowIso();
+    const site = this.upsertPublishedSite(publish, timestamp);
+    this.store.publishedVersions.set(version.id, {
+      id: version.id,
+      siteId: site.id,
+      state: 'live',
+      createdAt: version.createdAt,
+      finalizedAt: timestamp,
+    });
+    const publishedFiles = await this.promoteFiles(site, version.id, version.files, session);
+    this.store.publishedFiles = this.store.publishedFiles.filter((file) => !(file.siteId === site.id && file.versionId === version.id));
+    this.store.publishedFiles.push(...publishedFiles);
+
     version.status = 'live';
-    version.finalizedAt = nowIso();
+    version.finalizedAt = timestamp;
     publish.liveVersionId = version.id;
-    publish.updatedAt = nowIso();
+    publish.updatedAt = timestamp;
+    site.currentVersionId = version.id;
+    site.expiresAt = publish.expiresAt;
+    site.spaMode = publish.spaMode;
+    site.viewer = publish.viewer ?? 'static';
+    site.updatedAt = timestamp;
     return publish;
   }
 
@@ -129,10 +176,10 @@ export class PublishingService {
         uploads,
         skipped,
       },
-      finalizeUrl: `https://api.divband.local/api/v1/publish/${publish.slug}/finalize`,
+      finalizeUrl: `${this.apiBaseUrl}/api/v1/publish/${publish.slug}/finalize`,
       expiresInSeconds,
       claimToken,
-      claimUrl: claimToken ? `https://api.divband.local/api/v1/publish/${publish.slug}/claim` : undefined,
+      claimUrl: claimToken ? `${this.apiBaseUrl}/api/v1/publish/${publish.slug}/claim` : undefined,
       expiresAt: publish.expiresAt,
     };
   }
@@ -146,17 +193,148 @@ export class PublishingService {
     };
   }
 
-  private uploadPlan(files: PublishFileManifest[]): PublishUploadPlan[] {
-    return files.map((file) => ({
-      path: file.path,
-      method: 'PUT',
-      url: `https://uploads.divband.local/${encodeURIComponent(file.hash)}/${encodeURIComponent(file.path)}`,
-      headers: {
-        'content-type': file.contentType,
-        'x-divband-content-sha256': file.hash,
-      },
-      expiresInSeconds: PUBLISHING_LIMITS.uploadPlan.expiresInSeconds,
+  private uploadPlan(slug: string, versionId: string, files: PublishFileManifest[]): PublishUploadPlan[] {
+    const expiresAt = new Date(Date.now() + PUBLISHING_LIMITS.uploadPlan.expiresInSeconds * 1000).toISOString();
+    return files.map((file) => {
+      const storageKey = this.stagingObjectStorageKey(slug, versionId, file.path);
+      const presigned = this.objectStorage.presignPut({
+        key: storageKey,
+        contentType: file.contentType,
+        contentLength: file.size,
+        checksumSha256: file.hash,
+        expiresAt,
+      });
+      return {
+        path: file.path,
+        method: 'PUT',
+        url: presigned.url,
+        headers: presigned.headers,
+        expiresInSeconds: presigned.expiresInSeconds,
+        storageBucket: this.objectStorage.bucket,
+        storageKey,
+        checksumSha256: file.hash,
+        contentLength: file.size,
+        expiresAt,
+      };
+    });
+  }
+
+
+  private uploadSession(publish: Publish, versionId: string, uploads: PublishUploadPlan[], skipped: PublishFileManifest[], createdAt: string): UploadSession {
+    const expiresAt = uploads.reduce((earliest, upload) => (Date.parse(upload.expiresAt) < Date.parse(earliest) ? upload.expiresAt : earliest), publish.expiresAt ?? new Date(Date.now() + PUBLISHING_LIMITS.uploadPlan.expiresInSeconds * 1000).toISOString());
+    return {
+      versionId,
+      slug: publish.slug,
+      expiresAt,
+      uploads,
+      skipped,
+      scannerStatus: 'clean',
+      createdAt,
+    };
+  }
+
+  private requireUploadSession(versionId: string): UploadSession {
+    const session = this.store.uploadSessions.get(versionId);
+    if (!session) {
+      throw new Error('Upload session not found.');
+    }
+    return session;
+  }
+
+  private requireSessionReady(session: UploadSession): void {
+    if (Date.parse(session.expiresAt) <= Date.now()) {
+      throw new Error('Upload session has expired.');
+    }
+    if (session.scannerStatus !== 'clean') {
+      throw new Error('Upload scanner has not approved this publish.');
+    }
+  }
+
+  private async verifyManifestObjects(files: PublishFileManifest[], session: UploadSession): Promise<void> {
+    for (const file of files) {
+      const upload = session.uploads.find((item) => item.path === file.path);
+      if (!upload) {
+        if (session.skipped.some((item) => item.path === file.path && item.hash === file.hash && item.size === file.size)) {
+          const existing = this.findReusablePublishedFile(session.slug, file);
+          if (!existing || !(await this.objectStorage.headObject(existing.storageKey))) {
+            throw new Error(`Reusable object is missing for ${file.path}.`);
+          }
+          continue;
+        }
+        throw new Error(`Upload plan missing for ${file.path}.`);
+      }
+      if (Date.parse(upload.expiresAt) <= Date.now()) {
+        throw new Error(`Upload URL has expired for ${file.path}.`);
+      }
+      const object = await this.objectStorage.headObject(upload.storageKey);
+      if (!object) {
+        throw new Error(`Uploaded object is missing for ${file.path}.`);
+      }
+      if (object.contentLength !== file.size || object.checksumSha256 !== file.hash) {
+        throw new Error(`Uploaded object metadata does not match manifest for ${file.path}.`);
+      }
+    }
+  }
+
+  private upsertPublishedSite(publish: Publish, timestamp: string): PublishedSite {
+    const existing = this.store.publishedSites.get(publish.slug);
+    if (existing) {
+      return existing;
+    }
+    const site: PublishedSite = {
+      id: createId('published_site'),
+      slug: publish.slug,
+      ownerId: publish.ownerUserId,
+      platformHostname: `${publish.slug}.${this.publicSiteDomain}`,
+      expiresAt: publish.expiresAt,
+      claimTokenHash: publish.claimTokenHash,
+      spaMode: publish.spaMode,
+      viewer: publish.viewer ?? 'static',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    this.store.publishedSites.set(site.slug, site);
+    return site;
+  }
+
+  private async promoteFiles(site: PublishedSite, versionId: string, files: PublishFileManifest[], session: UploadSession) {
+    return Promise.all(files.map(async (file) => {
+      const upload = session.uploads.find((item) => item.path === file.path);
+      const storageKey = upload?.storageKey ? this.liveObjectStorageKey(site.slug, versionId, file.path) : (this.findReusablePublishedFile(site.slug, file)?.storageKey ?? this.liveObjectStorageKey(site.slug, versionId, file.path));
+      if (upload) {
+        await this.objectStorage.copyObject(upload.storageKey, storageKey);
+      }
+      return {
+        siteId: site.id,
+        versionId,
+        path: file.path,
+        size: file.size,
+        contentType: file.contentType,
+        hash: file.hash,
+        storageKey,
+      };
     }));
+  }
+
+
+  private findReusablePublishedFile(slug: string, file: PublishFileManifest) {
+    const site = this.store.publishedSites.get(slug);
+    if (!site) {
+      return undefined;
+    }
+    return this.store.publishedFiles.find((publishedFile) => publishedFile.siteId === site.id && publishedFile.path === file.path && publishedFile.hash === file.hash && publishedFile.size === file.size);
+  }
+
+  private stagingObjectStorageKey(slug: string, versionId: string, path: string): string {
+    return `${this.objectStorage.stagingPrefix}/${slug}/${versionId}/${this.normalizeObjectPath(path)}`;
+  }
+
+  private liveObjectStorageKey(slug: string, versionId: string, path: string): string {
+    return `${this.objectStorage.livePrefix}/${slug}/versions/${versionId}/${this.normalizeObjectPath(path)}`;
+  }
+
+  private normalizeObjectPath(path: string): string {
+    return path.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
   }
 
   private async requireWriteAccess(publish: Publish, actor: AuthActor | undefined, claimToken: unknown): Promise<void> {
@@ -241,14 +419,32 @@ export class PublishingService {
     return normalizeSlug(base) || 'site';
   }
 
+  private reserveSlug(requestedSlug: unknown, fallbackBase: string): string {
+    if (typeof requestedSlug === 'string' && requestedSlug.trim()) {
+      const slug = normalizeSlug(requestedSlug);
+      if (!slug) {
+        throw new Error('slug must include at least one letter or number.');
+      }
+      if (this.slugTaken(slug)) {
+        throw new Error('Publish slug is already in use.');
+      }
+      return slug;
+    }
+    return this.uniqueSlug(fallbackBase);
+  }
+
   private uniqueSlug(base: string): string {
     let candidate = `${base}-${this.randomSlugSuffix()}`;
     let suffix = 1;
-    while (this.store.publishes.has(candidate)) {
+    while (this.slugTaken(candidate)) {
       suffix += 1;
       candidate = `${base}-${this.randomSlugSuffix()}-${suffix}`;
     }
     return candidate;
+  }
+
+  private slugTaken(slug: string): boolean {
+    return this.store.publishes.has(slug) || this.store.publishedSites.has(slug);
   }
 
   private ttlSeconds(value: unknown): number {
@@ -266,7 +462,7 @@ export class PublishingService {
   }
 
   private siteUrl(slug: string): string {
-    return `https://${slug}.divband.site`;
+    return `https://${slug}.${this.publicSiteDomain}`;
   }
 
   private optionalTrimmedString(value: unknown): string | undefined {
