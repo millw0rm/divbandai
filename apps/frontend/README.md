@@ -1,6 +1,6 @@
 # divband frontend
 
-The frontend package defines a minimal, framework-neutral dashboard for operating divband projects. It can be mounted into a static HTML shell, tested with a mocked `fetch`, or adapted to a UI framework later.
+The frontend package now ships a minimal static HTML application around the existing framework-neutral dashboard module. It mounts `mountDashboard` from `src/dashboard.ts`, applies production-ready CSS, and keeps the dashboard API client contract unchanged.
 
 Implemented dashboard pages:
 
@@ -23,7 +23,44 @@ Implemented dashboard pages:
 - Lifecycle state labels for Created, Repository provisioned, Namespace provisioned, Building, Deployed, Domain pending verification, Domain active, and Failed.
 - HTML render helpers for a minimal dashboard shell and each page.
 
-Minimal browser usage:
+## Local startup
+
+From the repository root, install workspace dependencies once:
+
+```sh
+npm install
+```
+
+Start the frontend dev server:
+
+```sh
+npm run dev --workspace @divband/frontend
+```
+
+Build or preview the production bundle:
+
+```sh
+npm run build --workspace @divband/frontend
+npm run preview --workspace @divband/frontend
+```
+
+## Backend API URL
+
+The build script reads the backend base URL from `DIVBAND_API_BASE_URL` (or `VITE_API_BASE_URL` for compatibility) and falls back to `/api` when neither variable is set.
+
+Set the API URL when building or starting the local static server:
+
+```sh
+DIVBAND_API_BASE_URL=http://localhost:3000 npm run dev --workspace @divband/frontend
+```
+
+A compatibility `apps/frontend/.env.example` is included for hosts that load `VITE_API_BASE_URL`, but the built-in scripts use shell environment variables directly.
+
+The expected local backend URL is `http://localhost:3000` unless you run `apps/backend` on a different port. The controller expects the backend API documented in `apps/backend/openapi.yaml`, including `POST /auth/register`, `POST /auth/login`, project lifecycle routes under `/projects`, and AI change-request routes under `/projects/{projectId}/ai/change-requests`.
+
+## Browser mounting API
+
+The static app uses the same browser mounting API that can be reused by other shells:
 
 ```ts
 import { mountDashboard } from '@divband/frontend';
@@ -33,5 +70,3 @@ mountDashboard({
   baseUrl: '/api',
 });
 ```
-
-The controller expects the backend API documented in `apps/backend/openapi.yaml`, including `POST /auth/register`, `POST /auth/login`, project lifecycle routes under `/projects`, and AI change-request routes under `/projects/{projectId}/ai/change-requests`.
