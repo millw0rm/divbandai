@@ -101,8 +101,22 @@ export class PublishingService {
     return publish;
   }
 
+  get(slug: string): Publish {
+    const publish = this.requirePublish(slug);
+    this.requireNotExpired(publish);
+    return publish;
+  }
+
   list(actor: AuthActor): Publish[] {
     return [...this.store.publishes.values()].filter((publish) => publish.ownerUserId === actor.user.id);
+  }
+
+  async delete(slug: string, actor?: AuthActor, claimToken?: unknown): Promise<Publish> {
+    const publish = this.requirePublish(slug);
+    await this.requireWriteAccess(publish, actor, claimToken);
+    this.store.publishes.delete(slug);
+    publish.updatedAt = nowIso();
+    return publish;
   }
 
   private responseFor(publish: Publish, version: PublishVersion, uploads: PublishUploadPlan[], skipped: PublishFileManifest[], claimToken?: string): PublishResponse {

@@ -1,0 +1,21 @@
+{
+  "name": "divband",
+  "title": "divband Agent-First Static Hosting",
+  "description": "Publish prebuilt static websites from coding agents using OpenAPI, MCP tools, or an installable skill.",
+  "homepage": "https://divband.local",
+  "api": {
+    "type": "openapi",
+    "url": "https://divband.local/openapi.json"
+  },
+  "mcp": {
+    "transport": "stdio",
+    "package": "@divband/mcp-server"
+  },
+  "docs": [
+    "https://divband.local/llms.txt",
+    "https://divband.local/docs/agent-distribution",
+    "https://divband.local/pricing.md"
+  ],
+  "auth": ["anonymous claim token", "bearer API token"],
+  "use_cases": ["static previews", "documentation sites", "SPA demos", "agent-generated landing pages"]
+}

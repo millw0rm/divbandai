@@ -71,6 +71,22 @@ paths:
   /api/v1/publish/{slug}:
     parameters:
       - $ref: '#/components/parameters/PublishSlug'
+    get:
+      summary: Get instant publish metadata
+      description: Returns metadata for a live or pending publish slug. Expired anonymous publishes return an error.
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Publish metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publish:
+                    $ref: '#/components/schemas/Publish'
     put:
       summary: Update an existing instant publish
       description: Requires either an anonymous claimToken in the JSON body or authenticated bearer credentials for the owning account.
@@ -90,6 +106,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublishResponse'
+    delete:
+      summary: Delete an instant publish
+      description: Requires either an anonymous claimToken in the JSON body or authenticated bearer credentials for the owning account.
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletePublishRequest'
+      responses:
+        '200':
+          description: Publish deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publish:
+                    $ref: '#/components/schemas/Publish'
   /api/v1/publish/{slug}/finalize:
     parameters:
       - $ref: '#/components/parameters/PublishSlug'
@@ -926,6 +964,12 @@ components:
       properties:
         claimToken:
           type: string
+    DeletePublishRequest:
+      type: object
+      properties:
+        claimToken:
+          type: string
+          description: Required when deleting an anonymous publish without bearer authentication.
     PublishResponse:
       type: object
       properties:

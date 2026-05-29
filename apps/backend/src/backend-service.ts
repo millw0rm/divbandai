@@ -97,12 +97,24 @@ export class BackendService {
           return this.created(response, 202);
         }
 
+        if (method === 'GET' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug)) {
+          return this.ok({ publish: this.publishing.get(publishSlug) });
+        }
+
         if (method === 'PUT' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug)) {
           const response = await this.publishing.update(publishSlug, this.requiredObject(request.body) as unknown as PublishRequest & { claimToken?: unknown }, actor);
           if (actor) {
             this.audit.record(actor.user.id, 'publish.updated', { slug: response.slug, versionId: response.upload.versionId });
           }
           return this.ok(response);
+        }
+
+        if (method === 'DELETE' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug)) {
+          const publish = await this.publishing.delete(publishSlug, actor, this.optionalObject(request.body).claimToken);
+          if (actor) {
+            this.audit.record(actor.user.id, 'publish.deleted', { slug: publish.slug });
+          }
+          return this.ok({ publish });
         }
 
         if (method === 'POST' && publishSlug && this.matches(route, 'api', 'v1', 'publish', publishSlug, 'finalize')) {
