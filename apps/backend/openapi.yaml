@@ -1770,10 +1770,20 @@ components:
                 type: string
               hostname:
                 type: string
+              mode:
+                $ref: '#/components/schemas/DomainDnsMode'
+                description: Selected domain mode for dashboards that display setup instructions.
+              dnsMode:
+                $ref: '#/components/schemas/DomainDnsMode'
+                description: Backward-compatible alias for mode.
               status:
                 $ref: '#/components/schemas/DomainStatus'
               verificationStatus:
                 $ref: '#/components/schemas/DomainVerificationStatus'
+              assignedNameservers:
+                type: array
+                items:
+                  type: string
               delegationStatus:
                 $ref: '#/components/schemas/DomainDelegationStatus'
               certificateStatus:

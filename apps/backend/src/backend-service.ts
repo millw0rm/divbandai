@@ -278,15 +278,7 @@ export class BackendService {
             namespaceProvisioned: project.namespaceProvisioned,
             platformSubdomainAttached: project.platformSubdomainAttached,
             activeDomains: project.domains.filter((domain) => domain.verified).map((domain) => domain.hostname),
-            domains: project.domains.map((domain) => ({
-              id: domain.id,
-              hostname: domain.hostname,
-              status: domain.status,
-              verificationStatus: domain.verificationStatus,
-              delegationStatus: domain.delegationStatus,
-              certificateStatus: domain.certificateStatus,
-              failureReason: domain.failureReason,
-            })),
+            domains: project.domains.map((domain) => this.domainStatusResponse(domain)),
             latestDeployment: project.deployments.at(-1),
           });
         }
@@ -1359,6 +1351,22 @@ export class BackendService {
   private redactGitLabIdentity(identity: GitLabIdentityLink): Omit<GitLabIdentityLink, 'accessTokenHash'> {
     const { accessTokenHash: _accessTokenHash, ...safeIdentity } = identity;
     return safeIdentity;
+  }
+
+
+  private domainStatusResponse(domain: ProjectDomain): Pick<ProjectDomain, 'id' | 'hostname' | 'dnsMode' | 'status' | 'verificationStatus' | 'assignedNameservers' | 'delegationStatus' | 'certificateStatus' | 'failureReason'> & { mode: DomainDnsMode } {
+    return {
+      id: domain.id,
+      hostname: domain.hostname,
+      mode: domain.dnsMode,
+      dnsMode: domain.dnsMode,
+      status: domain.status,
+      verificationStatus: domain.verificationStatus,
+      assignedNameservers: domain.assignedNameservers,
+      delegationStatus: domain.delegationStatus,
+      certificateStatus: domain.certificateStatus,
+      failureReason: domain.failureReason,
+    };
   }
 
   private requireDomain(project: Project, domainId: string): ProjectDomain {
