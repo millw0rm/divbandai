@@ -13,6 +13,7 @@ export type BackendProjectStatus = ProjectLifecycleState | 'draft' | 'archived';
 export type DashboardPageId =
   | 'sign-in'
   | 'sign-up'
+  | 'agent-quickstart'
   | 'project-list'
   | 'create-project'
   | 'project-overview'
@@ -283,6 +284,40 @@ export interface DashboardActionResult {
   html: string;
 }
 
+
+const agentQuickstartCurl = `curl -sS -X POST "$DIVBAND_API_BASE_URL/api/v1/publish" \\
+  -H "authorization: Bearer $DIVBAND_API_TOKEN" \\
+  -H "content-type: application/json" \\
+  -d '{
+    "slug": "negar-portfolio",
+    "anonymous": false,
+    "spaMode": true,
+    "files": [
+      { "path": "index.html", "size": 2048, "sha256": "..." }
+    ]
+  }'`;
+
+const agentQuickstartMcp = `{
+  "mcpServers": {
+    "divband": {
+      "command": "npx",
+      "args": ["-y", "@divband/mcp-server"],
+      "env": {
+        "DIVBAND_API_BASE_URL": "https://api.divband.local",
+        "DIVBAND_API_TOKEN": "dvb_live_..."
+      }
+    }
+  }
+}`;
+
+const agentRoadmapPhases = [
+  { id: 'P0', name: 'Skeleton', status: 'done', description: 'Routes, models, local persistence, infra templates, MCP, OpenAPI, and agent docs are present.' },
+  { id: 'P1', name: 'Runnable instant static hosting', status: 'active', description: 'Presigned upload sessions, checksum validation, scanner gate, publish-to-serve promotion, hardened auth, and local stack.' },
+  { id: 'P2', name: 'Custom domains and TLS', status: 'next', description: 'DNS verification, certificate issuance, renewal, and serving-layer domain routing.' },
+  { id: 'P3', name: 'Reviewed AI changes', status: 'later', description: 'Real repository context, generated diffs, branches, merge requests, CI, and deploy previews.' },
+  { id: 'P4', name: 'Full project hosting', status: 'later', description: 'Production GitLab, Kubernetes, Terraform, runner, namespace, and route adapters.' },
+];
+
 export const dashboardSections: DashboardSection[] = [
   {
     id: 'projects',
@@ -325,6 +360,12 @@ export const dashboardPages: DashboardPage[] = [
     requiresProject: false,
   },
 
+  {
+    id: 'agent-quickstart',
+    title: 'Agent quickstart',
+    description: 'Machine-drivable publish flow, MCP setup, and MVP roadmap imported from the Divband Studio bundle.',
+    requiresProject: false,
+  },
   {
     id: 'admin-user-org-search',
     title: 'Admin: user/org search',
@@ -1055,6 +1096,8 @@ function renderCurrentPage(state: DashboardState, selectedProject?: Project): st
       return renderSignUpPage();
     case 'create-project':
       return renderCreateProjectPage();
+    case 'agent-quickstart':
+      return renderAgentQuickstartPage();
     case 'project-overview':
       return renderProjectOverviewPage(selectedProject, state.statusSummary);
     case 'gitlab-repository-status':
@@ -1124,6 +1167,37 @@ function renderAdminAuditEventsPage(events: PlatformAuditEvent[]): string {
 function renderAdminAbuseActionsPage(actions: AbuseAction[]): string {
   const rows = actions.length ? actions.map((action) => `<tr><td>${escapeHtml(action.createdAt)}</td><td>${escapeHtml(action.targetType)}</td><td>${escapeHtml(action.targetId)}</td><td>${escapeHtml(action.action)}</td><td>${escapeHtml(action.reason)}</td></tr>`).join('') : '<tr><td colspan="5">No abuse actions.</td></tr>';
   return `<article class="card"><h2>Abuse/suspension actions</h2><p>Uses audited <code>GET/POST /admin/abuse-actions</code>.</p><form data-action="admin-abuse-action"><label>Target type <select name="targetType"><option>user</option><option>organization</option><option>project</option><option>domain</option></select></label><label>Target ID <input name="targetId" required></label><label>Action <select name="abuseAction"><option>warn</option><option>suspend</option><option>unsuspend</option><option>restrict_deployments</option></select></label><label>Reason <input name="reason" required></label><button type="submit">Record abuse action</button></form><table><thead><tr><th>Created</th><th>Type</th><th>Target</th><th>Action</th><th>Reason</th></tr></thead><tbody>${rows}</tbody></table></article>`;
+}
+
+
+function renderAgentQuickstartPage(): string {
+  const phases = agentRoadmapPhases
+    .map((phase) => `<li><strong>${escapeHtml(phase.id)} · ${escapeHtml(phase.name)}</strong><span class="badge badge-${escapeHtml(phase.status)}">${escapeHtml(phase.status)}</span><p>${escapeHtml(phase.description)}</p></li>`)
+    .join('');
+
+  return `
+    <article class="card hero-card">
+      <p class="eyebrow">Agent-first instant hosting</p>
+      <h2>Publish static output from agents, CI, or the dashboard.</h2>
+      <p>The imported Divband Studio bundle frames the platform around one wedge: build a site locally, create a publish session, upload validated files, finalize an immutable version, and serve it at a Divband URL before graduating to domains or full project hosting.</p>
+      <div class="quickstart-grid">
+        <div>
+          <h3>REST publish session</h3>
+          <p>Agents should publish only build output directories, never source roots, secrets, dependency folders, or local home directories.</p>
+          <pre><code>${escapeHtml(agentQuickstartCurl)}</code></pre>
+        </div>
+        <div>
+          <h3>MCP setup</h3>
+          <p>Use the MCP server for tool-driven publish, update, claim, inspect, list, and delete flows with the same validation as REST.</p>
+          <pre><code>${escapeHtml(agentQuickstartMcp)}</code></pre>
+        </div>
+      </div>
+    </article>
+    <article class="card">
+      <h2>Imported roadmap emphasis</h2>
+      <p>These phases keep the dashboard aligned with the extracted product/design bundle while preserving this repository's current implementation status.</p>
+      <ol class="roadmap-list">${phases}</ol>
+    </article>`;
 }
 
 function renderSignInPage(): string {
