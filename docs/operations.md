@@ -142,3 +142,78 @@ Recommended thresholds:
 ## Runbooks and ownership
 
 Each alert and admin action must link to a runbook that covers customer impact, diagnostic queries, rollback or mitigation, escalation path, and audit events to verify after the action. Platform operations owns shared infrastructure, tenant admins own plan and quota decisions, and project owners own application-level deployment failures unless the failure is caused by Divband infrastructure.
+
+## MVP provisioning runbook: API request to live hostname
+
+This runbook describes the concrete MVP path for one project. The backend owns
+per-project provisioning; Terraform owns shared infrastructure prerequisites and
+keeps per-project modules as contracts to avoid duplicate ownership.
+
+### Prerequisites
+
+- `GITLAB_URL`, `GITLAB_TOKEN` or `GITLAB_ACCESS_TOKEN`, and optionally
+  `GITLAB_NAMESPACE_ID` are configured for the backend service account.
+- Shared Kubernetes infrastructure exists: cluster credentials for `kubectl`, an
+  ingress or Gateway controller, cert-manager, External Secrets, and the
+  `ClusterSecretStore` referenced by `EXTERNAL_SECRET_STORE_NAME`.
+- `KUBERNETES_TEMPLATE_DIR` points at `infra/k8s/base` or an equivalent rendered
+  template directory. Set `KUBERNETES_APPLY=true` only in environments where the
+  API worker should apply manifests directly.
+- DNS verification uses public TXT lookups. The `.test` and manual observed-token
+  shortcuts are disabled unless `DIVBAND_ALLOW_TEST_DNS_VERIFICATION=true` is set
+  in a non-production test environment.
+
+### Flow
+
+1. **Create the project record.** `POST /projects` validates the organization,
+   normalizes the slug, and stores the lifecycle plan: GitLab path, Kubernetes
+   namespace, platform hostname, and runner tag.
+2. **Provision GitLab.** `POST /projects/{id}/gitlab-repository` calls the
+   GitLab adapter. The adapter creates or reuses the GitLab project, configures
+   Divband CI/CD variables and protected project secrets, protects the default
+   branch, and creates either a deploy token or project access token for runtime
+   pulls. AI workflows use the same adapter to create branches, open merge
+   requests, and trigger GitLab pipelines.
+3. **Provision Kubernetes.** `POST /projects/{id}/kubernetes-namespace` renders
+   the `infra/k8s/base` templates with project ID, slug, tenant, owner,
+   environment, quota, image, hostname, ingress, TLS, and External Secrets
+   values. When `KUBERNETES_APPLY=true`, the backend runs `kubectl apply -f -`;
+   otherwise the response includes the rendered manifest bundle for an operator
+   or GitOps controller to apply.
+4. **Attach the platform hostname.** `POST /projects/{id}/platform-subdomain`
+   marks the default platform hostname active after the shared wildcard DNS and
+   ingress route are available. The rendered ingress points at the public service
+   in the tenant namespace and requests TLS through the configured cluster issuer.
+5. **Deploy application code.** `POST /projects/{id}/deployments` records a
+   deployment and GitLab CI builds/publishes images. Deployment jobs update
+   `/projects/{id}/deployments/report` with pipeline IDs, commit SHAs, image
+   digests, ingress hostname, health-check URL, and rollout state.
+6. **Verify custom domains.** `POST /projects/{id}/domains` returns a TXT record
+   named `_divband-challenge.<hostname>` with value
+   `divband-verification=<token>`. `POST /projects/{id}/domains/{domainId}/verify`
+   performs a real TXT lookup before marking the domain verified and requesting
+   certificate issuance.
+7. **Track certificate readiness.** Certificate status is read from cert-manager
+   `Certificate` resources or ingress/Gateway readiness labels when Kubernetes is
+   the provider. If `CERTIFICATE_STATUS_PROVIDER=dns_provider`, the configured
+   DNS-provider status command supplies `issued`, `pending`, or `failed` state.
+8. **Confirm live traffic.** Operators verify the hostname resolves to the shared
+   ingress, TLS is issued, the latest deployment is `succeeded`, and project logs
+   and metrics include `divband.io/project-id`, `divband.io/tenant-id`, and
+   `divband.io/environment` labels.
+
+### Rollback and failure handling
+
+- If GitLab provisioning fails, retry the GitLab step after validating token
+  scopes and namespace permissions. The adapter is idempotent for existing
+  projects and variables.
+- If Kubernetes rendering fails, inspect unresolved `REPLACE_WITH_*` tokens and
+  template changes before enabling `KUBERNETES_APPLY` again.
+- If Kubernetes apply fails, run the rendered manifest through `kubectl apply
+  --dry-run=server -f -` and check admission, quota, External Secrets, and
+  cert-manager prerequisites.
+- If DNS verification fails, query the TXT record with `dig TXT
+  _divband-challenge.<hostname>` and wait for DNS propagation before retrying.
+- If certificate issuance stays pending, inspect cert-manager `Certificate`,
+  `CertificateRequest`, `Order`, and `Challenge` resources and confirm the
+  ingress or Gateway route references the expected hostname and TLS secret.

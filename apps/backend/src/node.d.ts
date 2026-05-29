@@ -1,12 +1,14 @@
 declare const process: {
   env: Record<string, string | undefined>;
   exitCode?: number;
+  cwd(): string;
 };
 
 declare module 'node:process' {
   const process: {
     env: Record<string, string | undefined>;
     exitCode?: number;
+    cwd(): string;
     on(event: 'SIGINT' | 'SIGTERM', listener: () => void): void;
   };
   export default process;
@@ -40,6 +42,8 @@ declare module 'node:http' {
 
 declare module 'node:fs' {
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
+  export function readFileSync(path: string, encoding: 'utf8'): string;
+  export function readdirSync(path: string): string[];
 }
 
 declare module 'node:path' {
@@ -65,4 +69,13 @@ declare module 'node:sqlite' {
     };
     close(): void;
   }
+}
+
+
+declare module 'node:child_process' {
+  export function execFileSync(command: string, args?: string[], options?: { input?: string; encoding?: 'utf8'; stdio?: unknown }): string;
+}
+
+declare module 'node:dns/promises' {
+  export function resolveTxt(hostname: string): Promise<string[][]>;
 }
