@@ -187,7 +187,29 @@ ansible-galaxy collection install -r infra/ansible/requirements.yml
 
 ## 5. Bootstrap the environment
 
-Run the full site playbook from `infra/ansible`:
+For production deployments from a checked-out repository, prefer the root wrapper because it builds the application images, pushes them, installs the required Ansible collections, prints the exact backend/frontend image references, and then runs the full site playbook with `DIVBAND_IMAGE_TAG` set:
+
+```bash
+REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-production.sh
+```
+
+The wrapper accepts these environment inputs:
+
+- `REGISTRY` — required base image registry/project, for example `registry.gitlab.com/divband/control-plane`.
+- `TAG` — image tag; defaults to `git rev-parse --short HEAD` when available.
+- `ANSIBLE_INVENTORY` — inventory path from the repository root, or an absolute path; defaults to `infra/ansible/inventory.yml`.
+- `ANSIBLE_EXTRA_ARGS` — optional arguments appended to `ansible-playbook`, such as `--limit k8s_control_plane` or extra `-e` values.
+- `DIVBAND_BACKEND_IMAGE_REPOSITORY` — optional backend image repository override; defaults to `${REGISTRY}/backend`.
+- `DIVBAND_FRONTEND_IMAGE_REPOSITORY` — optional frontend image repository override; defaults to `${REGISTRY}/frontend`.
+
+Under the hood it runs the same full playbook from `infra/ansible` after pushing the images:
+
+```sh
+cd infra/ansible
+DIVBAND_IMAGE_TAG="$TAG" ansible-playbook -i "$INVENTORY_PATH" playbooks/site.yml --ask-vault-pass $ANSIBLE_EXTRA_ARGS
+```
+
+To run Ansible manually without building or pushing images, run the full site playbook from `infra/ansible`:
 
 ```sh
 cd infra/ansible

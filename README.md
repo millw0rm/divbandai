@@ -26,6 +26,16 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 - `demo` — safe examples, demos, and walkthroughs that show how projects should behave before production hardening.
 - `sandbox` — draft area for experiments and unshipped ideas; nothing here should be deployed automatically.
 
+## Production deployment wrapper
+
+Use `scripts/deploy-production.sh` from the repository root to build the backend and frontend Docker images, push them to a registry, install the Ansible collections, and run the full VM bootstrap playbook. The wrapper requires `REGISTRY`, defaults `TAG` to `git rev-parse --short HEAD`, defaults `ANSIBLE_INVENTORY` to `infra/ansible/inventory.yml`, and accepts optional `ANSIBLE_EXTRA_ARGS`, `DIVBAND_BACKEND_IMAGE_REPOSITORY`, and `DIVBAND_FRONTEND_IMAGE_REPOSITORY` overrides.
+
+```bash
+REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-production.sh
+```
+
+By default the wrapper builds and pushes `${REGISTRY}/backend:${TAG}` and `${REGISTRY}/frontend:${TAG}` from the repository root, then runs `infra/ansible/playbooks/site.yml` with `DIVBAND_IMAGE_TAG` set to the selected tag. Set the repository override variables when the backend and frontend images live outside the default `/backend` and `/frontend` paths.
+
 ## Current status
 
 This repository currently defines the initial platform skeleton, interfaces, infrastructure templates, and a VM-IP based Ansible bootstrap path for operator-run MVP pilots. Production integrations must replace placeholder values before deployment, and public-business readiness is tracked separately from infrastructure bootstrap readiness.
