@@ -28,10 +28,10 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 
 ## Production deployment wrapper
 
-Use `scripts/deploy-production.sh` from the repository root to build the backend and frontend Docker images, push them to a registry, install the Ansible collections, and run the full VM bootstrap playbook. The wrapper requires `REGISTRY`, defaults `TAG` to `git rev-parse --short HEAD`, defaults `ANSIBLE_INVENTORY` to `infra/ansible/inventory.yml`, and accepts optional `ANSIBLE_EXTRA_ARGS`, `DIVBAND_BACKEND_IMAGE_REPOSITORY`, and `DIVBAND_FRONTEND_IMAGE_REPOSITORY` overrides.
+Use `make deploy-production` from the repository root to build the backend and frontend Docker images, push them to a registry, install the Ansible collections, and run the full VM bootstrap playbook through `scripts/deploy-production.sh`. The Make target passes through `REGISTRY`, `TAG`, `ANSIBLE_INVENTORY`, and `ANSIBLE_EXTRA_ARGS`; the wrapper requires `REGISTRY`, defaults `TAG` to `git rev-parse --short HEAD`, defaults `ANSIBLE_INVENTORY` to `infra/ansible/inventory.yml`, and accepts optional `DIVBAND_BACKEND_IMAGE_REPOSITORY` and `DIVBAND_FRONTEND_IMAGE_REPOSITORY` overrides.
 
 ```bash
-REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-production.sh
+make deploy-production REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0
 ```
 
 By default the wrapper builds and pushes `${REGISTRY}/backend:${TAG}` and `${REGISTRY}/frontend:${TAG}` from the repository root, then runs `infra/ansible/playbooks/site.yml` with `DIVBAND_IMAGE_TAG` set to the selected tag. Set the repository override variables when the backend and frontend images live outside the default `/backend` and `/frontend` paths.
