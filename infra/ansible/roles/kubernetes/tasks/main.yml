@@ -19,7 +19,8 @@
       sh -s - server \
       --cluster-cidr {{ kubernetes_pod_cidr }} \
       --service-cidr {{ kubernetes_service_cidr }} \
-      {{ '--disable traefik' if kubernetes_disable_builtin_ingress else '' }}
+      {{ '--disable traefik' if kubernetes_disable_builtin_ingress else '' }} \
+      {{ ('--resolv-conf ' ~ (kubernetes_k3s_resolv_conf | trim)) if (kubernetes_k3s_resolv_conf | trim | length > 0) else '' }}
   args:
     executable: /bin/bash
     creates: /etc/systemd/system/k3s.service
@@ -95,7 +96,8 @@
       K3S_URL={{ kubernetes_api_endpoint }} \
       K3S_TOKEN={{ hostvars[groups['k8s_control_plane'][0]].kubernetes_join_token | default(kubernetes_join_token) }} \
       INSTALL_K3S_CHANNEL={{ kubernetes_k3s_channel }} \
-      sh -s - agent
+      sh -s - agent \
+      {{ ('--resolv-conf ' ~ (kubernetes_k3s_resolv_conf | trim)) if (kubernetes_k3s_resolv_conf | trim | length > 0) else '' }}
   args:
     executable: /bin/bash
     creates: /etc/systemd/system/k3s-agent.service

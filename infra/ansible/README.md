@@ -114,6 +114,7 @@ Required or commonly customized variables:
 | `ingress_nginx_service_type`, `ingress_nginx_http_node_port`, `ingress_nginx_https_node_port` | Expose ingress-nginx on stable node ports for the HAProxy path; defaults are `NodePort`, `32080`, and `32443`. |
 | `public_vip` | Optional per-load-balancer floating address managed by keepalived. Point platform DNS and `kubernetes_api_endpoint` at this value when using a VIP. |
 | `common_configure_systemd_resolved`, `common_dns_resolvers`, `common_dns_fallback_resolvers`, `common_dns_domains` | Optional host-level DNS resolver settings for systemd-resolved. Use these only when the VMs need specific recursive resolvers or search/routing domains. |
+| `kubernetes_k3s_resolv_conf` | Optional resolver file path passed to k3s with `--resolv-conf`; leave empty unless k3s or pod DNS resolution does not follow the desired host resolver path. |
 | `kubernetes_kubeconfig_local_path` | Local operator artifact path for the collected kubeconfig; defaults to `infra/ansible/artifacts/kubeconfig`. |
 | `kubernetes_kubeconfig_context` | Context name written into the collected kubeconfig. |
 | `cert_manager_acme_email`, `cert_manager_acme_server`, `cert_manager_cluster_issuer` | ACME account and issuer settings. |
@@ -131,6 +132,14 @@ Required or commonly customized variables:
 Set `common_configure_systemd_resolved: true` with a non-empty `common_dns_resolvers` list when the VMs themselves must use specific recursive DNS resolvers, for example provider-approved resolvers or private resolvers reachable from the host network. On systemd hosts, the `common` role writes `/etc/systemd/resolved.conf.d/divband.conf` and restarts `systemd-resolved`. `common_dns_fallback_resolvers` and `common_dns_domains` are optional and map to systemd-resolved `FallbackDNS=` and `Domains=` entries.
 
 This option controls host or VM name resolution before and outside Kubernetes. It does not create or update public platform DNS records such as `divband_public_hostname`, tenant domains, or load-balancer records, and it does not configure Kubernetes CoreDNS behavior inside the cluster. Manage public records with your DNS provider and manage cluster DNS with Kubernetes/CoreDNS configuration if those behaviors need to change.
+
+When k3s or pod DNS resolution does not follow the desired host resolver path, optionally pass an explicit resolver file to k3s on both server and agent installs:
+
+```yaml
+kubernetes_k3s_resolv_conf: /run/systemd/resolve/resolv.conf
+```
+
+Leave `kubernetes_k3s_resolv_conf` empty for normal installs; set it only for resolver-path troubleshooting or host resolver layouts where k3s should read a specific resolv.conf file.
 
 ### Divband backend GitLab secret handoff
 
