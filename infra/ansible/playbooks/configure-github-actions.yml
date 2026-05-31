@@ -1,0 +1,26 @@
+---
+- name: Configure GitHub Actions secrets and variables for divband VPS deploy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    github_repository: "{{ lookup('env', 'GITHUB_REPOSITORY') | default('', true) }}"
+    divband_keyring_password_file: "{{ lookup('env', 'DIVBAND_KEYRING_PASSWORD_FILE') | default('.secrets/keyring-password', true) }}"
+  tasks:
+    - name: Configure GitHub Actions with gh
+      ansible.builtin.command:
+        cmd: scripts/configure-github-actions-secrets.sh
+        chdir: "{{ playbook_dir }}/../../.."
+      environment:
+        GITHUB_REPOSITORY: "{{ github_repository }}"
+        DIVBAND_KEYRING_PASSWORD_FILE: "{{ divband_keyring_password_file }}"
+        DIVBAND_VPS_HOST: "{{ lookup('env', 'DIVBAND_VPS_HOST') | default('185.204.170.33', true) }}"
+        DIVBAND_VPS_USER: "{{ lookup('env', 'DIVBAND_VPS_USER') | default('ubuntu', true) }}"
+        DIVBAND_SOURCE_REPO_URL: "{{ lookup('env', 'DIVBAND_SOURCE_REPO_URL') | default('https://github.com/millw0rm/divband.git', true) }}"
+        DIVBAND_PUBLIC_HOSTNAME: "{{ lookup('env', 'DIVBAND_PUBLIC_HOSTNAME') | default('185.204.170.33.nip.io', true) }}"
+        DIVBAND_API_BASE_URL: "{{ lookup('env', 'DIVBAND_API_BASE_URL') | default('http://185.204.170.33/api', true) }}"
+        DIVBAND_PUBLIC_SITE_DOMAIN: "{{ lookup('env', 'DIVBAND_PUBLIC_SITE_DOMAIN') | default('185.204.170.33.nip.io', true) }}"
+        DIVBAND_UPLOAD_DOMAIN: "{{ lookup('env', 'DIVBAND_UPLOAD_DOMAIN') | default('uploads.185.204.170.33.nip.io', true) }}"
+        CLUSTER_REGISTRY_ENDPOINT: "{{ lookup('env', 'CLUSTER_REGISTRY_ENDPOINT') | default('localhost:30500', true) }}"
+      changed_when: true
