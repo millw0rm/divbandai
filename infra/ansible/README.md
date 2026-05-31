@@ -185,7 +185,7 @@ Required GitHub secret:
 
 | Secret | Purpose |
 | --- | --- |
-| `DIVBAND_VPS_SSH_PRIVATE_KEY` | Private key that can SSH to the VPS as `ubuntu` or the configured `DIVBAND_VPS_USER`. |
+| `DIVBAND_KEYRING_PASSWORD` | Password used to decrypt `infra/keys/encrypted/github-actions-divband-vps.key.enc` during the workflow. |
 
 Optional GitHub Actions variables:
 
