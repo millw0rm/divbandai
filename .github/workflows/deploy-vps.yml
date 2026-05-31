@@ -32,6 +32,7 @@ jobs:
     permissions:
       contents: read
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       VPS_HOST: ${{ vars.DIVBAND_VPS_HOST || '185.204.170.33' }}
       VPS_USER: ${{ vars.DIVBAND_VPS_USER || 'ubuntu' }}
       DIVBAND_SOURCE_REPO_URL: ${{ vars.DIVBAND_SOURCE_REPO_URL || 'https://github.com/millw0rm/divband.git' }}
@@ -55,7 +56,11 @@ jobs:
         env:
           DIVBAND_KEYRING_PASSWORD: ${{ secrets.DIVBAND_KEYRING_PASSWORD }}
         run: |
-          test -n "$DIVBAND_KEYRING_PASSWORD"
+          if [ -z "$DIVBAND_KEYRING_PASSWORD" ]; then
+            echo "::error title=Missing secret::Set DIVBAND_KEYRING_PASSWORD in this repository's GitHub Actions secrets."
+            exit 1
+          fi
+          command -v openssl >/dev/null
           install -m 700 -d ~/.ssh
           scripts/decrypt-keyring-file.sh infra/keys/encrypted/github-actions-divband-vps.key.enc ~/.ssh/divband-vps
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
