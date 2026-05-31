@@ -2,6 +2,7 @@ declare const process: {
   env: Record<string, string | undefined>;
   exitCode?: number;
   cwd(): string;
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): void;
 };
 
 declare module 'node:process' {
@@ -52,6 +53,8 @@ declare module 'node:path' {
 }
 
 declare module 'node:url' {
+  export function fileURLToPath(url: string | URL): string;
+
   export class URL {
     constructor(input: string, base?: string);
     host: string;

@@ -24,6 +24,11 @@
   register: external_secrets_apply
   changed_when: "'configured' in external_secrets_apply.stdout or 'created' in external_secrets_apply.stdout"
 
+- name: Fail when an unsupported External Secrets provider is selected
+  ansible.builtin.fail:
+    msg: "Unsupported external_secrets_provider={{ external_secrets_provider }}. Use vault or disabled."
+  when: external_secrets_provider not in ['vault', 'disabled']
+
 - name: Render External Secrets ClusterSecretStore
   ansible.builtin.template:
     src: cluster-secret-store.yml.j2
@@ -31,6 +36,7 @@
     owner: root
     group: root
     mode: '0600'
+  when: external_secrets_provider != 'disabled'
 
 - name: Apply External Secrets ClusterSecretStore
   ansible.builtin.command:
@@ -39,3 +45,4 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: cluster_secret_store_apply
   changed_when: "'configured' in cluster_secret_store_apply.stdout or 'created' in cluster_secret_store_apply.stdout"
+  when: external_secrets_provider != 'disabled'

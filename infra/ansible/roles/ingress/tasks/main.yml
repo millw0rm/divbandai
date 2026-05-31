@@ -27,10 +27,10 @@
 
 
 - name: Allow ingress node ports through public ingress target firewalls
-  community.general.ufw:
-    rule: allow
-    port: "{{ item.1 }}"
-    proto: tcp
+  ansible.builtin.command:
+    cmd: "ufw allow {{ item.1 }}/tcp"
+  register: ingress_ufw_node_port
+  changed_when: "'Rule added' in ingress_ufw_node_port.stdout"
   delegate_to: "{{ item.0 }}"
   loop: "{{ groups[public_ingress_target] | default([]) | product([ingress_nginx_http_node_port, ingress_nginx_https_node_port]) | list }}"
   when: ingress_nginx_service_type == 'NodePort' and public_ingress_target is string

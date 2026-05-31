@@ -48,6 +48,7 @@ export interface LinkOAuthIdentityInput {
 }
 
 export interface LinkGitLabIdentityInput {
+  provider?: 'gitlab' | 'github';
   gitlabUserId: string;
   username: string;
   accessToken?: string;
@@ -58,12 +59,14 @@ export class AuthService {
   private readonly signupMode: 'invite_only' | 'public';
   private readonly inviteCodes: Set<string>;
   private readonly exposeRecoveryTokens: boolean;
+  private readonly requireEmailVerification: boolean;
 
   constructor(private readonly store: BackendStore, env: Record<string, string | undefined> = process.env) {
     this.tokenPepper = env.DIVBAND_TOKEN_HASH_PEPPER?.trim() || 'divband-local-development-token-pepper';
     this.signupMode = env.DIVBAND_SIGNUP_MODE === 'public' ? 'public' : 'invite_only';
     this.inviteCodes = new Set((env.DIVBAND_SIGNUP_INVITE_CODES ?? '').split(',').map((code) => code.trim()).filter(Boolean));
     this.exposeRecoveryTokens = env.DIVBAND_EXPOSE_AUTH_TOKENS === '1' || env.NODE_ENV !== 'production';
+    this.requireEmailVerification = !['0', 'false', 'no', 'off'].includes((env.DIVBAND_REQUIRE_EMAIL_VERIFICATION ?? '1').toLowerCase());
   }
 
   register(input: RegisterInput): AuthResult {
@@ -114,7 +117,7 @@ export class AuthService {
       throw new Error('Invalid email or password.');
     }
 
-    if (!user.emailVerifiedAt) {
+    if (this.requireEmailVerification && !user.emailVerifiedAt) {
       throw new Error('Email verification is required before login.');
     }
 
@@ -288,12 +291,15 @@ export class AuthService {
   }
 
   linkGitLabIdentity(userId: string, input: LinkGitLabIdentityInput): GitLabIdentityLink {
+    const provider = input.provider ?? 'gitlab';
     const link: GitLabIdentityLink = {
       id: createId('gitlab_identity'),
       userId,
+      provider,
       gitlabUserId: input.gitlabUserId.trim(),
       username: input.username.trim(),
       accessTokenHash: input.accessToken ? this.hashToken(input.accessToken) : undefined,
+      accessToken: input.accessToken?.trim(),
       linkedAt: nowIso(),
     };
     this.store.gitlabIdentityLinks.set(link.id, link);
@@ -369,7 +375,7 @@ export class AuthService {
   }
 
   private createOpaqueToken(prefix: string): string {
-    return `${prefix}_${randomBytes(32).toString('base64url')}`;
+    return `${prefix}_${Buffer.from(randomBytes(32)).toString('base64url')}`;
   }
 
   private hashToken(token: string): string {
@@ -377,7 +383,7 @@ export class AuthService {
   }
 
   private hashPassword(password: string): string {
-    const salt = randomBytes(16).toString('base64');
+    const salt = Buffer.from(randomBytes(16)).toString('base64');
     const derived = scryptSync(password, salt, SCRYPT_KEY_LENGTH, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 64 * 1024 * 1024 });
     return `scrypt:v1:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt}:${Buffer.from(derived).toString('base64')}`;
   }

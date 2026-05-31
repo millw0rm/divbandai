@@ -1,6 +1,6 @@
 # Local MVP
 
-This guide describes the smallest useful local divband setup: one API process, one static dashboard process, SQLite snapshot persistence, and mocked platform integrations. It is intended for repeatable product and API smoke testing before production GitLab, Kubernetes, DNS, certificate, storage, email, and billing adapters are connected.
+This guide describes the smallest useful local divband setup: one API process, one static dashboard process, in-memory application state, and mocked platform integrations. It is intended for repeatable product and API smoke testing before production GitLab, Kubernetes, DNS, certificate, storage, email, billing, and durable persistence adapters are connected.
 
 ## What runs locally
 
@@ -8,7 +8,7 @@ This guide describes the smallest useful local divband setup: one API process, o
 | --- | --- | --- |
 | Backend API | Node HTTP server from `apps/backend` on `http://localhost:3000`. | Real local process. |
 | Frontend dashboard | Static dashboard bundle from `apps/frontend` on `http://localhost:5173`. | Real local process. |
-| Database | SQLite snapshot at `apps/backend/data/divband-backend.sqlite` when launched through the root script. | Real local file, not a shared production database. |
+| Application state | In-memory `BackendStore` maps and arrays behind the runtime persistence adapter. Data resets when the process restarts. | Real local process memory. |
 | GitLab | Service boundary returns deterministic repository/runner metadata when called; no remote project is created in the basic smoke path. | Mocked locally. |
 | Kubernetes | `KUBERNETES_CONFIG_MODE=disabled`; namespace operations stay inside the service boundary. | Mocked locally. |
 | DNS | Verification uses generated challenge tokens and optional `observedToken` input; no DNS provider is changed. | Mocked locally. |
@@ -17,9 +17,68 @@ This guide describes the smallest useful local divband setup: one API process, o
 | Email | No outbound email is sent for registration or local flows. | Mocked/not wired. |
 | Billing | Plans and ownership are local metadata only; no payment provider is called. | Mocked/not wired. |
 
+## Demo accounts
+
+Local dev scripts set `DIVBAND_SEED_DEMO_DATA=1`, so the app creates the same test accounts on every in-memory startup. All demo accounts use password `DemoPass123!`.
+
+| Role | Email |
+| --- | --- |
+| Platform super admin | `demo.superadmin@divband.test` |
+| Platform support | `demo.support@divband.test` |
+| Platform security | `demo.security@divband.test` |
+| Project owner | `demo.owner@divband.test` |
+| Project admin | `demo.admin@divband.test` |
+| Project developer | `demo.developer@divband.test` |
+| Project viewer | `demo.viewer@divband.test` |
+
+The project-role accounts are members of the `demo-role-test` project.
+
+## Local GitHub connection
+
+Local scripts set `SOURCE_CONTROL_PROVIDER=github`. To let a demo user provision and push to a real GitHub repository through the dashboard, create a GitHub OAuth app and set:
+
+```sh
+export GITHUB_OAUTH_CLIENT_ID=...
+export GITHUB_OAUTH_CLIENT_SECRET=...
+```
+
+Set the OAuth app callback URL to:
+
+```text
+http://localhost:3000/api/auth/callback/github
+```
+
+After signing in, open the repository status page and click `Connect GitHub`. GitHub will show its authorization page, then return to the local dashboard with the linked identity.
+
+For a manual fallback, create a GitHub personal access token and link it to the local user:
+
+```sh
+curl -sS -X POST http://localhost:3000/api/auth/github-identity \
+  -H "authorization: Bearer $DIVBAND_SESSION_TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"username":"your-github-login","githubUserId":"your-github-login","accessToken":"github_pat_or_classic_token"}'
+```
+
+Then use the dashboard's repository provisioning action or call:
+
+```sh
+curl -sS -X POST "http://localhost:3000/api/projects/$PROJECT_ID/github-repository" \
+  -H "authorization: Bearer $DIVBAND_SESSION_TOKEN"
+```
+
+The local GitHub adapter creates a private repository under the linked GitHub user, stores non-secret Divband metadata as repository variables when permitted, and writes reviewed AI proposals to `ai/...` branches before opening pull requests.
+
+To seed the demo owner with a GitHub identity on every local restart, set these environment variables before running the app:
+
+```sh
+export DIVBAND_DEMO_GITHUB_USERNAME=your-github-login
+export DIVBAND_DEMO_GITHUB_TOKEN=github_pat_or_classic_token
+npm run dev:mvp
+```
+
 ## Prerequisites
 
-- Node.js 24 or newer. The backend uses `node:sqlite` and Node's `--experimental-transform-types` support.
+- Node.js 24 or newer. The backend uses Node's `--experimental-transform-types` support.
 - npm with workspace support.
 
 Install dependencies once from the repository root:
@@ -48,7 +107,7 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-No `docker-compose.yml` is required for the current MVP because SQLite is file-backed and object storage is mocked in memory. Add Compose later only when the local path needs a real PostgreSQL, MinIO/S3, mail sink, or similar emulator.
+No `docker-compose.yml` is required for the current MVP because application state and object storage are mocked in memory. Add Compose later only when the local path needs a real PostgreSQL, MinIO/S3, mail sink, or similar emulator.
 
 ## Smoke scenario
 

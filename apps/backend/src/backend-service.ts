@@ -1,4 +1,5 @@
 import { can, assignableRoles, type ProjectPermission, type ProjectRole } from '@divband/auth';
+import process from 'node:process';
 import { createProjectLifecyclePlan, type ProjectStatus } from './project-lifecycle.ts';
 import type {
   AbuseAction,
@@ -42,6 +43,7 @@ import { DeploymentStatusService, type DeploymentStatusReport } from './services
 import { DnsVerificationService } from './services/dns-verification.ts';
 import { ManagedDnsService, type ManagedDnsProvider } from './services/managed-dns.ts';
 import { GitLabService } from './services/gitlab.ts';
+import { GitHubOAuthService } from './services/github-oauth.ts';
 import { KubernetesService } from './services/kubernetes.ts';
 import { RateLimitService } from './services/rate-limit.ts';
 import { PublishingService, type PublishingServiceOptions } from './services/publishing.ts';
@@ -69,6 +71,7 @@ export interface BackendServiceOptions extends PublishingServiceOptions {
   managedDnsDefaultTtlSeconds?: number;
   managedDnsPlatformIngressTarget?: string;
   managedDnsApexRecordType?: 'ALIAS' | 'ANAME' | 'A' | 'AAAA';
+  requireEmailVerification?: boolean;
 }
 
 export class BackendService {
@@ -79,17 +82,21 @@ export class BackendService {
   private readonly dns = new DnsVerificationService();
   private readonly managedDns: ManagedDnsService;
   private readonly gitlab = new GitLabService();
+  private readonly githubOAuth: GitHubOAuthService;
   private readonly kubernetes = new KubernetesService();
   private readonly publishing: PublishingService;
   private readonly secrets: ProjectSecretService;
   private readonly rateLimits: RateLimitService;
+  private readonly requireEmailVerification: boolean;
 
   constructor(private readonly store: BackendStore = defaultStore, options: BackendServiceOptions = {}) {
     this.auth = new AuthService(store);
     this.audit = new AuditLogService(store);
+    this.githubOAuth = new GitHubOAuthService(store);
     this.rateLimits = new RateLimitService(store);
     this.secrets = new ProjectSecretService(store);
     this.publishing = new PublishingService(store, options);
+    this.requireEmailVerification = options.requireEmailVerification ?? true;
     this.managedDns = new ManagedDnsService(options.managedDnsProvider, {
       defaultTtlSeconds: options.managedDnsDefaultTtlSeconds,
       platformIngressTarget: options.managedDnsPlatformIngressTarget,
@@ -167,6 +174,29 @@ export class BackendService {
         return await this.handleAcmeChallengeRoute(method, route, request);
       }
 
+      if (method === 'GET' && (this.matches(route, 'auth', 'github', 'callback') || this.matches(route, 'auth', 'callback', 'github'))) {
+        const result = await this.githubOAuth.complete(
+          route.query.get('code') ?? '',
+          route.query.get('state') ?? '',
+          this.apiBaseUrl(),
+        );
+        const identity = this.auth.linkGitLabIdentity(result.userId, {
+          provider: 'github',
+          gitlabUserId: result.githubUserId,
+          username: result.username,
+          accessToken: result.accessToken,
+        });
+        this.audit.record(result.userId, 'user.github_identity_linked', { username: identity.username });
+        const project = result.projectId ? this.store.projects.get(result.projectId) : undefined;
+        if (project && project.ownerId === result.userId && !project.repositoryUrl) {
+          const user = this.store.users.get(result.userId);
+          if (user) {
+            await this.createGitLabRepository(project, user);
+          }
+        }
+        return this.ok({ redirectTo: project ? `/#gitlab-repository-status?projectId=${encodeURIComponent(project.id)}` : result.returnTo, gitlabIdentity: this.redactGitLabIdentity(identity) });
+      }
+
       if (this.isPublishingRoute(route)) {
         const actor = this.authenticateOptional(request);
         const publishSlug = route.segments[3];
@@ -235,10 +265,21 @@ export class BackendService {
         return this.created({ identity });
       }
 
-      if (method === 'POST' && this.matches(route, 'auth', 'gitlab-identity')) {
-        const gitlabIdentity = this.auth.linkGitLabIdentity(user.id, this.gitLabIdentityInput(request.body));
-        this.audit.record(user.id, 'user.gitlab_identity_linked', { username: gitlabIdentity.username });
+      if (method === 'POST' && (this.matches(route, 'auth', 'gitlab-identity') || this.matches(route, 'auth', 'github-identity'))) {
+        const gitlabIdentity = this.auth.linkGitLabIdentity(user.id, this.sourceControlIdentityInput(request.body, route.segments[1] === 'github-identity' ? 'github' : 'gitlab'));
+        this.audit.record(user.id, 'user.source_control_identity_linked', { provider: gitlabIdentity.provider ?? 'gitlab', username: gitlabIdentity.username });
         return this.created({ gitlabIdentity: this.redactGitLabIdentity(gitlabIdentity) });
+      }
+
+      if (method === 'POST' && this.matches(route, 'auth', 'github', 'oauth', 'start')) {
+        const body = this.optionalObject(request.body);
+        const returnTo = typeof body.returnTo === 'string' ? body.returnTo : '/#gitlab-repository-status';
+        const projectId = typeof body.projectId === 'string' ? body.projectId : undefined;
+        return this.ok(this.githubOAuth.start(user.id, this.apiBaseUrl(), returnTo, projectId));
+      }
+
+      if (method === 'GET' && this.matches(route, 'auth', 'github', 'repositories')) {
+        return this.ok({ repositories: await this.gitlab.listRepositories(this.sourceControlIdentityForUser(user)) });
       }
 
       if (method === 'GET' && this.matches(route, 'organizations')) {
@@ -284,6 +325,15 @@ export class BackendService {
           });
         }
 
+        if (method === 'GET' && this.matches(route, 'projects', projectId, 'repository', 'contents')) {
+          const { project } = this.requireProject(projectId, actor, 'project:read');
+          const path = route.query.get('path') ?? '';
+          return this.ok({
+            repository: project.repository,
+            files: await this.gitlab.listRepositoryContents(project, this.sourceControlIdentityForUser(user), path),
+          });
+        }
+
         if (method === 'GET' && this.matches(route, 'projects', projectId, 'members')) {
           const { project } = this.requireProject(projectId, actor, 'project:read');
           return this.ok({ members: this.listProjectMembers(project) });
@@ -300,9 +350,11 @@ export class BackendService {
           return this.created({ apiToken: this.redactApiToken(result.apiToken), token: result.token });
         }
 
-        if (method === 'POST' && this.matches(route, 'projects', projectId, 'gitlab-repository')) {
+        if (method === 'POST' && (this.matches(route, 'projects', projectId, 'gitlab-repository') || this.matches(route, 'projects', projectId, 'github-repository'))) {
           const { project } = this.requireProject(projectId, actor, 'project:provision_gitlab');
-          this.requireGitLabIdentity(user);
+          if (this.gitlab.requiresLinkedIdentity()) {
+            this.requireGitLabIdentity(user);
+          }
           return this.ok({ repository: await this.createGitLabRepository(project, user), project });
         }
 
@@ -718,11 +770,20 @@ export class BackendService {
   }
 
   private async createGitLabRepository(project: Project, user: User): Promise<unknown> {
-    const repository = await this.gitlab.createRepository(project, this.secrets.list(project, { reveal: true }));
-    await this.gitlab.configureRunnerTag(project);
+    const identity = this.sourceControlIdentityForUser(user);
+    const repository = await this.gitlab.createRepository(project, this.secrets.list(project, { reveal: true }), identity);
+    await this.gitlab.configureRunnerTag(project, identity);
     project.repositoryUrl = repository.webUrl;
+    project.repository = {
+      provider: repository.provider === 'gitlab' ? 'gitlab' : 'github',
+      path: repository.path,
+      webUrl: repository.webUrl,
+      cloneUrl: repository.cloneUrl,
+      defaultBranch: repository.defaultBranch ?? 'main',
+      connectedAt: nowIso(),
+    };
     this.touch(project, 'repository_provisioned');
-    this.audit.record(user.id, 'project.gitlab_repository_created', { path: repository.path }, project.id);
+    this.audit.record(user.id, 'project.repository_created', { path: repository.path }, project.id);
     return repository;
   }
 
@@ -1076,7 +1137,7 @@ export class BackendService {
 
     changeRequest.patch.confirmedAt = nowIso();
     changeRequest.patch.confirmedBy = user.id;
-    const branch = await this.gitlab.createBranch(project, changeRequest, changeRequest.patch);
+    const branch = await this.gitlab.createBranch(project, changeRequest, changeRequest.patch, this.sourceControlIdentityForUser(user));
     changeRequest.branch = { ...branch, createdAt: nowIso() };
     this.touchAiChangeRequest(changeRequest, 'branch_created');
     this.audit.record(user.id, 'ai.branch_created', { changeRequestId, branch: branch.name, commitSha: branch.commitSha }, project.id);
@@ -1089,7 +1150,7 @@ export class BackendService {
       throw new Error('Create a GitLab branch before opening a merge request.');
     }
 
-    const mergeRequest = await this.gitlab.openMergeRequest(project, changeRequest);
+    const mergeRequest = await this.gitlab.openMergeRequest(project, changeRequest, this.sourceControlIdentityForUser(user));
     changeRequest.mergeRequest = { ...mergeRequest, createdAt: nowIso() };
     this.touchAiChangeRequest(changeRequest, 'merge_request_opened');
     this.audit.record(user.id, 'ai.merge_request_opened', { changeRequestId, mergeRequest: mergeRequest.webUrl }, project.id);
@@ -1102,7 +1163,7 @@ export class BackendService {
       throw new Error('Open a merge request before triggering CI.');
     }
 
-    const pipeline = await this.gitlab.triggerPipeline(project, changeRequest.branch?.name ?? changeRequest.mergeRequest.sourceBranch);
+    const pipeline = await this.gitlab.triggerPipeline(project, changeRequest.branch?.name ?? changeRequest.mergeRequest.sourceBranch, this.sourceControlIdentityForUser(user));
     changeRequest.ciStatus = { ...pipeline, deploymentReady: false, updatedAt: nowIso() };
     this.touchAiChangeRequest(changeRequest, 'ci_running');
     this.audit.record(user.id, 'ai.ci_triggered', { changeRequestId, pipelineId: pipeline.pipelineId }, project.id);
@@ -1289,11 +1350,16 @@ export class BackendService {
   }
 
   private requireGitLabIdentity(user: User): GitLabIdentityLink {
-    const link = [...this.store.gitlabIdentityLinks.values()].find((identity) => identity.userId === user.id);
+    const link = this.sourceControlIdentityForUser(user);
     if (!link) {
-      throw new Error('Link a GitLab identity before provisioning or accessing generated repositories.');
+      throw new Error('Link a source-control identity before provisioning or accessing generated repositories.');
     }
     return link;
+  }
+
+  private sourceControlIdentityForUser(user: User): GitLabIdentityLink | undefined {
+    const identities = [...this.store.gitlabIdentityLinks.values()].filter((identity) => identity.userId === user.id);
+    return identities.find((identity) => identity.provider === 'github' && identity.accessToken) ?? identities.at(-1);
   }
 
   private createOrganization(user: User, body: Record<string, unknown>): Organization {
@@ -1364,8 +1430,8 @@ export class BackendService {
     return safeToken;
   }
 
-  private redactGitLabIdentity(identity: GitLabIdentityLink): Omit<GitLabIdentityLink, 'accessTokenHash'> {
-    const { accessTokenHash: _accessTokenHash, ...safeIdentity } = identity;
+  private redactGitLabIdentity(identity: GitLabIdentityLink): Omit<GitLabIdentityLink, 'accessTokenHash' | 'accessToken'> {
+    const { accessTokenHash: _accessTokenHash, accessToken: _accessToken, ...safeIdentity } = identity;
     return safeIdentity;
   }
 
@@ -1401,6 +1467,10 @@ export class BackendService {
       delegationVerifiedAt: domain.delegationVerifiedAt,
       delegationFailedAt: domain.delegationFailedAt,
     };
+  }
+
+  private apiBaseUrl(): string {
+    return process.env.API_BASE_URL?.trim() || 'http://localhost:3000';
   }
 
   private domainStatusResponse(domain: ProjectDomain): Pick<ProjectDomain, 'id' | 'hostname' | 'dnsMode' | 'status' | 'verificationStatus' | 'assignedNameservers' | 'delegationStatus' | 'certificateStatus' | 'failureReason'> & { mode: DomainDnsMode; dnsSetup: DelegatedDnsSetup } {
@@ -1464,7 +1534,7 @@ export class BackendService {
   }
 
   private requireVerifiedAccount(actor: AuthActor): void {
-    if (!actor.user.emailVerifiedAt) {
+    if (this.requireEmailVerification && !actor.user.emailVerifiedAt) {
       throw new Error('Email verification is required before using authenticated platform features.');
     }
   }
@@ -1679,14 +1749,22 @@ export class BackendService {
     return { provider: record.provider, issuer: record.issuer, subject: record.subject, email: typeof record.email === 'string' ? record.email : undefined };
   }
 
-  private gitLabIdentityInput(body: unknown): LinkGitLabIdentityInput {
+  private sourceControlIdentityInput(body: unknown, fallbackProvider: 'gitlab' | 'github'): LinkGitLabIdentityInput {
     const record = this.requiredObject(body);
-    if (typeof record.gitlabUserId !== 'string' || typeof record.username !== 'string') {
-      throw new Error('GitLab identity requires gitlabUserId and username.');
+    const username = typeof record.username === 'string' ? record.username : typeof record.login === 'string' ? record.login : '';
+    const provider = record.provider === 'gitlab' || record.provider === 'github' ? record.provider : fallbackProvider;
+    const gitlabUserId = typeof record.gitlabUserId === 'string'
+      ? record.gitlabUserId
+      : typeof record.githubUserId === 'string'
+        ? record.githubUserId
+        : username;
+    if (!gitlabUserId || !username) {
+      throw new Error('Source-control identity requires username and user id.');
     }
     return {
-      gitlabUserId: record.gitlabUserId,
-      username: record.username,
+      provider,
+      gitlabUserId,
+      username,
       accessToken: typeof record.accessToken === 'string' ? record.accessToken : undefined,
     };
   }
@@ -1724,7 +1802,14 @@ export class BackendService {
   }
 }
 
-export const backendService = new BackendService();
+let defaultBackendService: BackendService | undefined;
+
+export const backendService = {
+  handle(request: ApiRequest): Promise<ApiResponse> {
+    defaultBackendService ??= new BackendService();
+    return defaultBackendService.handle(request);
+  },
+};
 
 export function handleApiRequest(request: ApiRequest): Promise<ApiResponse> {
   return backendService.handle(request);

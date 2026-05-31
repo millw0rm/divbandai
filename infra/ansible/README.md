@@ -35,6 +35,8 @@ The role currently enforces this boundary with `kubernetes_distribution: k3s`; s
 - `roles/gitlab` — connects to an existing GitLab endpoint, installs self-hosted GitLab when `gitlab_mode: install` is selected, and can run the Terraform stack under `../gitlab/terraform`.
 - `roles/gitlab_runner` — validates that a runner token source exists before package installation, resolves project runner tags and authentication tokens from Terraform outputs or Vault, disables untagged jobs, and registers dedicated runners.
 - `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer.
+- `roles/cluster_registry` — creates the k3s-hosted registry used by the single-VPS GitHub deployment flow.
+- `roles/divband_release` — checks out the GitHub source, builds backend/frontend images, pushes them to the k3s registry, and passes those image names to `roles/divband_app`.
 
 ## Integration points
 
@@ -174,6 +176,29 @@ REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-p
 # or
 make deploy-production REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0
 ```
+
+### Single-VPS GitHub CI deployment
+
+For the current single-VPS GitHub flow, `.github/workflows/deploy-vps.yml` runs on pushes to `main` and can also be triggered manually. It creates a temporary Ansible inventory in the GitHub Actions runner, connects to the VPS over SSH, runs `playbooks/deploy-divband-from-github.yml`, and deploys images built from `https://github.com/millw0rm/divband.git` through the in-cluster registry.
+
+Required GitHub secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `DIVBAND_VPS_SSH_PRIVATE_KEY` | Private key that can SSH to the VPS as `ubuntu` or the configured `DIVBAND_VPS_USER`. |
+
+Optional GitHub Actions variables:
+
+| Variable | Default |
+| --- | --- |
+| `DIVBAND_VPS_HOST` | `185.204.170.33` |
+| `DIVBAND_VPS_USER` | `ubuntu` |
+| `DIVBAND_SOURCE_REPO_URL` | `https://github.com/millw0rm/divband.git` |
+| `DIVBAND_PUBLIC_HOSTNAME` | `185.204.170.33.nip.io` |
+| `DIVBAND_API_BASE_URL` | `http://185.204.170.33/api` |
+| `DIVBAND_PUBLIC_SITE_DOMAIN` | `185.204.170.33.nip.io` |
+| `DIVBAND_UPLOAD_DOMAIN` | `uploads.185.204.170.33.nip.io` |
+| `CLUSTER_REGISTRY_ENDPOINT` | `localhost:30500` |
 
 Required or commonly customized variables:
 

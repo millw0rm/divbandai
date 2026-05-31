@@ -324,6 +324,25 @@ paths:
                 properties:
                   gitlabIdentity:
                     $ref: '#/components/schemas/GitLabIdentityLink'
+  /auth/github-identity:
+    post:
+      summary: Link a GitHub identity for generated repository access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitLabIdentityLinkRequest'
+      responses:
+        '201':
+          description: GitHub identity linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gitlabIdentity:
+                    $ref: '#/components/schemas/GitLabIdentityLink'
   /organizations:
     get:
       summary: List organizations visible to the current user
@@ -531,7 +550,24 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
     post:
-      summary: Create the GitLab repository for a project
+      summary: Create the configured source-control repository for a project
+      responses:
+        '200':
+          description: Repository created or reconciled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repository:
+                    $ref: '#/components/schemas/GitLabRepository'
+                  project:
+                    $ref: '#/components/schemas/Project'
+  /projects/{projectId}/github-repository:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      summary: Create the GitHub repository for a project
       responses:
         '200':
           description: Repository created or reconciled
@@ -1673,15 +1709,22 @@ components:
           format: date-time
     GitLabIdentityLinkRequest:
       type: object
-      required: [gitlabUserId, username]
+      required: [username]
       properties:
+        provider:
+          type: string
+          enum: [gitlab, github]
         gitlabUserId:
+          type: string
+        githubUserId:
           type: string
         username:
           type: string
+        login:
+          type: string
         accessToken:
           type: string
-          description: Stored hashed or in a secret manager; never returned.
+          description: Stored only in the local in-memory runtime for GitHub API calls; never returned.
     GitLabIdentityLink:
       type: object
       properties:
@@ -1689,6 +1732,9 @@ components:
           type: string
         userId:
           type: string
+        provider:
+          type: string
+          enum: [gitlab, github]
         gitlabUserId:
           type: string
         username:

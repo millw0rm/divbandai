@@ -8,10 +8,15 @@ import { createObjectStorage } from './services/object-storage.ts';
 import { StaticServingService } from './services/static-serving.ts';
 import { createManagedDnsProvider } from './services/managed-dns.ts';
 import { createRuntimeStore } from './runtime-store.ts';
+import { seedDemoData } from './demo-seed.ts';
 import type { ApiRequest, ApiResponse } from './models.ts';
 
 const config = loadBackendConfig();
-const runtimeStore = await createRuntimeStore(config.databaseUrl);
+const runtimeStore = await createRuntimeStore({
+  driver: config.persistenceDriver,
+  databaseUrl: config.databaseUrl,
+});
+const demoSeed = await seedDemoData(runtimeStore.store, { enabled: config.seedDemoData, env: process.env });
 const objectStorage = createObjectStorage(config.objectStorage, localUploadBaseUrl());
 const managedDnsProvider = createManagedDnsProvider(config.managedDns);
 const staticServing = new StaticServingService(runtimeStore.store, { platformDomain: config.publicSiteDomain });
@@ -23,10 +28,18 @@ const backend = new BackendService(runtimeStore.store, {
   managedDnsDefaultTtlSeconds: config.managedDns.defaultTtlSeconds,
   managedDnsPlatformIngressTarget: config.managedDns.platformIngressTarget,
   managedDnsApexRecordType: config.managedDns.apexRecordType,
+  requireEmailVerification: config.requireEmailVerification,
 });
 
 const server = createServer(async (nodeRequest, nodeResponse) => {
   try {
+    applyCorsHeaders(nodeRequest, nodeResponse);
+    if (nodeRequest.method === 'OPTIONS') {
+      nodeResponse.statusCode = 204;
+      nodeResponse.end();
+      return;
+    }
+
     if (nodeRequest.method === 'GET' && nodeRequest.url === '/healthz') {
       send(nodeResponse, { status: 200, body: { ok: true } });
       return;
@@ -60,6 +73,9 @@ const server = createServer(async (nodeRequest, nodeResponse) => {
 
 server.listen(config.port, () => {
   console.log(`divband backend listening on ${config.apiBaseUrl} (port ${config.port})`);
+  if (demoSeed) {
+    console.log(`demo users seeded with password ${demoSeed.password}; project ${demoSeed.project.slug}`);
+  }
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -222,4 +238,13 @@ function send(response: ServerResponse, apiResponse: ApiResponse): void {
   response.statusCode = apiResponse.status;
   response.setHeader('content-type', 'application/json; charset=utf-8');
   response.end(JSON.stringify(apiResponse.body));
+}
+
+function applyCorsHeaders(request: IncomingMessage, response: ServerResponse): void {
+  const origin = request.headers.origin;
+  response.setHeader('access-control-allow-origin', typeof origin === 'string' ? origin : '*');
+  response.setHeader('vary', 'Origin');
+  response.setHeader('access-control-allow-methods', 'GET,HEAD,POST,PUT,DELETE,OPTIONS');
+  response.setHeader('access-control-allow-headers', 'authorization,content-type,accept');
+  response.setHeader('access-control-max-age', '600');
 }

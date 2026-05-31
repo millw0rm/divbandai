@@ -5,8 +5,8 @@
     state: restarted
 
 - name: Reload ufw
-  community.general.ufw:
-    state: reloaded
+  ansible.builtin.command:
+    cmd: ufw reload
 
 - name: Restart systemd-resolved
   ansible.builtin.service:

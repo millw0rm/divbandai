@@ -1,0 +1,66 @@
+---
+- name: Ensure k3s registry configuration directory exists
+  ansible.builtin.file:
+    path: "{{ cluster_registry_registries_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure k3s to pull from the local registry over HTTP
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: "{{ cluster_registry_registries_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart k3s
+
+- name: Flush k3s restart before applying registry workloads
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for k3s API after registry configuration
+  ansible.builtin.command:
+    cmd: kubectl get nodes
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cluster_registry_kubectl_nodes
+  retries: 20
+  delay: 6
+  until: cluster_registry_kubectl_nodes.rc == 0
+  changed_when: false
+
+- name: Render in-cluster registry manifest
+  ansible.builtin.template:
+    src: registry.yml.j2
+    dest: /tmp/divband-registry.yml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Apply in-cluster registry manifest
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/divband-registry.yml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cluster_registry_apply
+  changed_when: "'configured' in cluster_registry_apply.stdout or 'created' in cluster_registry_apply.stdout"
+
+- name: Wait for registry deployment rollout
+  ansible.builtin.command:
+    cmd: "kubectl -n {{ cluster_registry_namespace }} rollout status deployment/{{ cluster_registry_name }} --timeout=180s"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Wait for registry node port to accept requests
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ cluster_registry_node_port }}/v2/"
+    status_code:
+      - 200
+      - 401
+    return_content: false
+  register: cluster_registry_health
+  retries: 20
+  delay: 3
+  until: cluster_registry_health.status in [200, 401]

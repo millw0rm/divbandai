@@ -59,6 +59,9 @@ all:
     divband_backend_image: "{{ divband_backend_image_repository }}:{{ divband_image_tag }}"
     divband_frontend_image: "{{ divband_frontend_image_repository }}:{{ divband_image_tag }}"
     divband_public_hostname: app.divband.ir
+    divband_source_repo_url: https://github.com/millw0rm/divband.git
+    divband_source_version: main
+    cluster_registry_endpoint: localhost:30500
 
     # Production control-plane application settings. Replace every placeholder
     # and store secret values with Ansible Vault or your external secret source.

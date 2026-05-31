@@ -1,0 +1,68 @@
+---
+- name: Install source checkout and image build packages
+  ansible.builtin.package:
+    name:
+      - "{{ divband_release_git_package }}"
+      - "{{ divband_release_docker_package }}"
+    state: present
+
+- name: Enable Docker build service
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Check out divband source from GitHub
+  ansible.builtin.git:
+    repo: "{{ divband_source_repo_url }}"
+    dest: "{{ divband_source_dir }}"
+    version: "{{ divband_source_version }}"
+    update: true
+    force: true
+  register: divband_release_checkout
+
+- name: Resolve checked out divband commit
+  ansible.builtin.command:
+    cmd: git rev-parse --short=12 HEAD
+    chdir: "{{ divband_source_dir }}"
+  register: divband_release_commit
+  changed_when: false
+
+- name: Publish release image names for deployment
+  ansible.builtin.set_fact:
+    divband_image_tag: "{{ divband_release_commit.stdout }}"
+    divband_backend_image_repository: "{{ divband_release_backend_image_repository }}"
+    divband_frontend_image_repository: "{{ divband_release_frontend_image_repository }}"
+    divband_backend_image: "{{ divband_release_backend_image_repository }}:{{ divband_release_commit.stdout }}"
+    divband_frontend_image: "{{ divband_release_frontend_image_repository }}:{{ divband_release_commit.stdout }}"
+
+- name: Build backend image from GitHub source
+  ansible.builtin.command:
+    cmd: "docker build -f apps/backend/Dockerfile -t {{ divband_backend_image }} ."
+    chdir: "{{ divband_source_dir }}"
+  register: divband_release_backend_build
+  changed_when: "'Successfully built' in divband_release_backend_build.stdout or 'writing image' in divband_release_backend_build.stdout"
+
+- name: Build frontend image from GitHub source
+  ansible.builtin.command:
+    cmd: >-
+      docker build
+      --build-arg DIVBAND_API_BASE_URL={{ divband_release_frontend_api_base_url }}
+      -f apps/frontend/Dockerfile
+      -t {{ divband_frontend_image }}
+      .
+    chdir: "{{ divband_source_dir }}"
+  register: divband_release_frontend_build
+  changed_when: "'Successfully built' in divband_release_frontend_build.stdout or 'writing image' in divband_release_frontend_build.stdout"
+
+- name: Push backend image to k3s registry
+  ansible.builtin.command:
+    cmd: "docker push {{ divband_backend_image }}"
+  register: divband_release_backend_push
+  changed_when: "'Pushed' in divband_release_backend_push.stdout or 'digest:' in divband_release_backend_push.stdout"
+
+- name: Push frontend image to k3s registry
+  ansible.builtin.command:
+    cmd: "docker push {{ divband_frontend_image }}"
+  register: divband_release_frontend_push
+  changed_when: "'Pushed' in divband_release_frontend_push.stdout or 'digest:' in divband_release_frontend_push.stdout"

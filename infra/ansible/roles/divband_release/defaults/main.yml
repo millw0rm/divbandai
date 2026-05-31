@@ -1,0 +1,10 @@
+---
+divband_source_repo_url: https://github.com/millw0rm/divband.git
+divband_source_version: main
+divband_source_dir: /opt/divband-github
+divband_release_registry: "{{ cluster_registry_endpoint | default('localhost:30500') }}"
+divband_release_backend_image_repository: "{{ divband_release_registry }}/divband/backend"
+divband_release_frontend_image_repository: "{{ divband_release_registry }}/divband/frontend"
+divband_release_docker_package: docker.io
+divband_release_git_package: git
+divband_release_frontend_api_base_url: /api

@@ -20,6 +20,7 @@ import type {
   PublishedFile,
   PublishedSite,
   PublishedVersion,
+  SourceControlOAuthState,
   UploadSession,
   User,
 } from './models.ts';
@@ -42,6 +43,7 @@ export interface BackendStore {
   projectMemberships: Map<string, ProjectMembership>;
   oauthIdentities: Map<string, OAuthIdentity>;
   gitlabIdentityLinks: Map<string, GitLabIdentityLink>;
+  sourceControlOAuthStates: Map<string, SourceControlOAuthState>;
   auditEvents: AuditEvent[];
   aiChangeRequests: Map<string, AiChangeRequest>;
   publishes: Map<string, Publish>;
@@ -70,6 +72,7 @@ export interface BackendStoreSnapshot {
   projectMemberships: ProjectMembership[];
   oauthIdentities: OAuthIdentity[];
   gitlabIdentityLinks: GitLabIdentityLink[];
+  sourceControlOAuthStates: SourceControlOAuthState[];
   auditEvents: AuditEvent[];
   aiChangeRequests: AiChangeRequest[];
   publishes: Publish[];
@@ -104,6 +107,7 @@ export function createBackendStore(): BackendStore {
     projectMemberships: new Map(),
     oauthIdentities: new Map(),
     gitlabIdentityLinks: new Map(),
+    sourceControlOAuthStates: new Map(),
     auditEvents: [],
     aiChangeRequests: new Map(),
     publishes: new Map(),
@@ -133,7 +137,8 @@ export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot 
     projectEnvironmentSecrets: [...store.projectEnvironmentSecrets.values()],
     projectMemberships: [...store.projectMemberships.values()],
     oauthIdentities: [...store.oauthIdentities.values()],
-    gitlabIdentityLinks: [...store.gitlabIdentityLinks.values()],
+    gitlabIdentityLinks: [...store.gitlabIdentityLinks.values()].map(({ accessToken: _accessToken, ...identity }) => identity),
+    sourceControlOAuthStates: [...store.sourceControlOAuthStates.values()],
     auditEvents: [...store.auditEvents],
     aiChangeRequests: [...store.aiChangeRequests.values()],
     publishes: [...store.publishes.values()],
@@ -170,6 +175,7 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
   store.projectMemberships = mapById(snapshot.projectMemberships);
   store.oauthIdentities = mapById(snapshot.oauthIdentities);
   store.gitlabIdentityLinks = mapById(snapshot.gitlabIdentityLinks);
+  store.sourceControlOAuthStates = new Map((snapshot.sourceControlOAuthStates ?? []).map((state) => [state.state, state]));
   store.auditEvents = [...snapshot.auditEvents];
   store.aiChangeRequests = mapById(snapshot.aiChangeRequests);
   store.publishes = new Map(snapshot.publishes.map((publish) => [publish.slug, publish]));
