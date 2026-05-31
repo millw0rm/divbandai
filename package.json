@@ -8,9 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:backend": "API_BASE_URL=http://localhost:3000 PUBLIC_SITE_DOMAIN=localhost.test UPLOAD_DOMAIN=uploads.localhost.test DATABASE_URL=sqlite://./data/divband-backend.sqlite GITLAB_URL=https://gitlab.com KUBERNETES_CONFIG_MODE=disabled OBJECT_STORAGE_BUCKET=divband-local OBJECT_STORAGE_REGION=us-east-1 npm run dev --workspace @divband/backend",
-    "dev:frontend": "DIVBAND_API_BASE_URL=http://localhost:3000 npm run dev --workspace @divband/frontend",
-    "dev:mvp": "sh -c 'npm run dev:backend & backend_pid=$!; trap \"kill $backend_pid\" INT TERM EXIT; sleep 2; npm run dev:frontend'",
+    "dev:backend": "API_BASE_URL=http://localhost:3000 PUBLIC_SITE_DOMAIN=localhost.test UPLOAD_DOMAIN=uploads.localhost.test PERSISTENCE_DRIVER=memory SOURCE_CONTROL_PROVIDER=github GITLAB_URL=https://gitlab.com KUBERNETES_CONFIG_MODE=disabled OBJECT_STORAGE_BUCKET=divband-local OBJECT_STORAGE_REGION=us-east-1 DIVBAND_SIGNUP_MODE=public DIVBAND_REQUIRE_EMAIL_VERIFICATION=0 DIVBAND_SEED_DEMO_DATA=1 npm run dev --workspace @divband/backend",
+    "dev:frontend": "API_BASE_URL=http://localhost:3000 PUBLIC_SITE_DOMAIN=localhost.test UPLOAD_DOMAIN=uploads.localhost.test PERSISTENCE_DRIVER=memory SOURCE_CONTROL_PROVIDER=github GITLAB_URL=https://gitlab.com KUBERNETES_CONFIG_MODE=disabled OBJECT_STORAGE_BUCKET=divband-local OBJECT_STORAGE_REGION=us-east-1 DIVBAND_SIGNUP_MODE=public DIVBAND_REQUIRE_EMAIL_VERIFICATION=0 DIVBAND_SEED_DEMO_DATA=1 npm run dev --workspace @divband/frontend",
+    "dev:mvp": "npm run dev:frontend",
+    "e2e:github-oauth": "node tests/e2e/github-oauth-repository-flow.mjs",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "test": "npm run typecheck && npm run smoke:controls --workspace @divband/backend && npm run smoke:restore --workspace @divband/backend && npm run smoke:publish --workspace @divband/backend"
   },

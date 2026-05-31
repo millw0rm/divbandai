@@ -16,6 +16,8 @@ This document is the source of truth for divband product planning. Keep it curre
 
 ## 2. MVP definition
 
+For the prioritized minimal workable scope (P0/P1/CUT tags, simplified user/admin auth, git + K8s deploy loop, and explicit defer list), see **`docs/mvp-scope.md`**.
+
 ### Exact first usable product
 
 The first usable product is a local-demo-ready hosted project flow where a new user can sign up, create a project, provision the GitLab/Kubernetes placeholders, trigger and inspect a deployment record, attach a platform hostname, add and verify a custom domain token, and see the same flow represented in the dashboard. Agent instant hosting exists as a documented/API skeleton for anonymous static publish sessions, but the MVP should not claim production-grade static serving until object storage, edge routing, abuse controls, and API-key ownership are implemented. AI-assisted change requests are explicitly post-MVP: the dashboard/API may expose preview/mock controls for design validation, but real model calls, repository context retrieval, diff generation, GitLab commits, merge requests, and CI polling are not required for MVP acceptance.

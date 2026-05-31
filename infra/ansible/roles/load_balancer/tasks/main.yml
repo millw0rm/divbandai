@@ -35,18 +35,28 @@
   when: load_balancer_ingress_enabled and (load_balancer_ingress_backends | length == 0)
 
 - name: Allow load balancer service ports through host firewall
-  community.general.ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
+  ansible.builtin.command:
+    cmd: "ufw allow {{ item }}/tcp"
+  register: load_balancer_ufw_ports
+  changed_when: "'Rule added' in load_balancer_ufw_ports.stdout"
   loop: "{{ ([load_balancer_kubernetes_api_bind_port] if load_balancer_kubernetes_api_enabled else []) + ([load_balancer_http_bind_port, load_balancer_https_bind_port] if load_balancer_ingress_enabled else []) }}"
 
 - name: Allow HAProxy to bind a floating VIP before keepalived owns it
-  ansible.posix.sysctl:
-    name: net.ipv4.ip_nonlocal_bind
-    value: '1'
-    state: present
-    reload: true
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.d/99-divband-load-balancer.conf
+    regexp: '^net\.ipv4\.ip_nonlocal_bind\s*='
+    line: 'net.ipv4.ip_nonlocal_bind = 1'
+    create: true
+    owner: root
+    group: root
+    mode: '0644'
+  register: load_balancer_ip_nonlocal_bind_config
+  when: load_balancer_keepalived_enabled | bool
+
+- name: Apply HAProxy floating VIP sysctl
+  ansible.builtin.command:
+    cmd: sysctl -w net.ipv4.ip_nonlocal_bind=1
+  changed_when: load_balancer_ip_nonlocal_bind_config is changed
   when: load_balancer_keepalived_enabled | bool
 
 - name: Render HAProxy configuration

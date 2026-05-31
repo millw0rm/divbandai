@@ -4,9 +4,12 @@ The production backend can run with durable PostgreSQL persistence and an
 S3-compatible object-storage bucket. Runtime selection is automatic from the
 same environment variables used by `src/config.ts`:
 
-- `DATABASE_URL=postgres://...` or `postgresql://...` selects PostgreSQL.
-- `DATABASE_URL=sqlite://...` or `file:...` keeps the local SQLite snapshot
-  adapter.
+- `PERSISTENCE_DRIVER=memory` keeps all application state inside one process and
+  should not be used for durable or multi-replica production workloads.
+- `DATABASE_URL=postgres://...` or `postgresql://...` selects PostgreSQL unless
+  `PERSISTENCE_DRIVER` is set explicitly.
+- `DATABASE_URL=sqlite://...` or `file:...` selects the SQLite snapshot adapter
+  and should not be used for multi-replica production workloads.
 - `OBJECT_STORAGE_PROVIDER=s3` forces S3-compatible storage.
 - `OBJECT_STORAGE_PROVIDER=auto` (the default) selects S3 when both
   `OBJECT_STORAGE_ACCESS_KEY_ID` and `OBJECT_STORAGE_SECRET_ACCESS_KEY` are

@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "description": "Platform bootstrap phases for Divband. Each phase has exactly one owner tool for durable resources.",
+  "profiles": {
+    "vm_ansible": {
+      "description": "Bare-metal / VM path: Ansible bootstraps k3s and cluster add-ons; Terraform owns GitLab catalog and optional platform DNS.",
+      "k8s_addons_owner": "ansible",
+      "k8s_addons_phase": "k8s_platform_addons_ansible",
+      "skip_phases": ["k8s_platform_addons_terraform"]
+    },
+    "managed_terraform_k8s": {
+      "description": "Managed-cluster path: production Terraform applies shared K8s add-ons; Ansible skips duplicate add-on roles.",
+      "k8s_addons_owner": "terraform",
+      "k8s_addons_phase": "k8s_platform_addons_terraform",
+      "skip_phases": ["k8s_platform_addons_ansible"]
+    }
+  },
+  "terminal_phase": "platform_ready",
+  "phases": [
+    {
+      "id": "vm_baseline",
+      "title": "Prepare all hosts",
+      "owner": "ansible",
+      "depends_on": [],
+      "optional": false,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit all --start-at-task 'Refresh apt package cache'",
+      "notes": "common role: users, firewall, base packages"
+    },
+    {
+      "id": "container_runtime",
+      "title": "Install container runtime",
+      "owner": "ansible",
+      "depends_on": ["vm_baseline"],
+      "optional": false,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit 'k8s_control_plane:k8s_workers:runners'",
+      "notes": "containerd or Docker on nodes that run workloads or runners"
+    },
+    {
+      "id": "k8s_control_plane",
+      "title": "Bootstrap Kubernetes control plane",
+      "owner": "ansible",
+      "depends_on": ["container_runtime"],
+      "optional": false,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit k8s_control_plane",
+      "probes": [
+        {
+          "id": "kubeconfig_artifact",
+          "type": "file_exists",
+          "path": "infra/ansible/artifacts/kubeconfig"
+        }
+      ]
+    },
+    {
+      "id": "load_balancer",
+      "title": "Configure external load balancers",
+      "owner": "ansible",
+      "depends_on": ["k8s_control_plane"],
+      "optional": true,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit load_balancers",
+      "notes": "Skip with status skipped when inventory has no load_balancers group"
+    },
+    {
+      "id": "k8s_workers",
+      "title": "Join Kubernetes workers",
+      "owner": "ansible",
+      "depends_on": ["container_runtime", "k8s_control_plane"],
+      "optional": true,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit k8s_workers",
+      "notes": "Skip with status skipped for single-node labs"
+    },
+    {
+      "id": "k8s_platform_addons_ansible",
+      "title": "Install cluster platform add-ons (Ansible)",
+      "owner": "ansible",
+      "depends_on": ["k8s_control_plane"],
+      "optional": false,
+      "profile": "vm_ansible",
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit 'k8s_control_plane[0]'",
+      "notes": "ingress, cert-manager, external_secrets, observability roles",
+      "probes": [
+        {
+          "id": "ingress_class",
+          "type": "kubectl",
+          "kubeconfig": "infra/ansible/artifacts/kubeconfig",
+          "args": ["get", "ingressclass", "nginx"]
+        }
+      ]
+    },
+    {
+      "id": "k8s_platform_addons_terraform",
+      "title": "Install cluster platform add-ons (Terraform)",
+      "owner": "terraform",
+      "depends_on": ["k8s_control_plane"],
+      "optional": false,
+      "profile": "managed_terraform_k8s",
+      "working_dir": "infra/terraform/environments/production",
+      "command": "terraform -chdir=infra/terraform/environments/production apply -auto-approve",
+      "notes": "Requires apply_kubernetes_resources = true in terraform.tfvars. Mutually exclusive with k8s_platform_addons_ansible.",
+      "probes": [
+        {
+          "id": "terraform_k8s_stack",
+          "type": "terraform_output",
+          "working_dir": "infra/terraform/environments/production",
+          "output": "cluster_handoff"
+        }
+      ]
+    },
+    {
+      "id": "gitlab_server",
+      "title": "Provision or connect GitLab",
+      "owner": "ansible",
+      "depends_on": ["vm_baseline"],
+      "optional": false,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/gitlab.yml",
+      "notes": "Install Omnibus or connect to existing gitlab_url",
+      "probes": [
+        {
+          "id": "gitlab_http",
+          "type": "http",
+          "url_from_inventory": "gitlab_url",
+          "expect_status": [200, 302, 401]
+        }
+      ]
+    },
+    {
+      "id": "gitlab_catalog_terraform",
+      "title": "Provision GitLab tenant/project catalog",
+      "owner": "terraform",
+      "depends_on": ["gitlab_server"],
+      "optional": false,
+      "working_dir": "infra/gitlab/terraform",
+      "command": "terraform -chdir=infra/gitlab/terraform apply -auto-approve",
+      "alternate_command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/gitlab.yml -e gitlab_run_terraform=true",
+      "notes": "Creates groups, projects, branch protection, CI variables, project-scoped runners. Can run via Ansible gitlab role when gitlab_run_terraform=true.",
+      "probes": [
+        {
+          "id": "gitlab_projects_output",
+          "type": "terraform_output",
+          "working_dir": "infra/gitlab/terraform",
+          "output": "projects"
+        }
+      ]
+    },
+    {
+      "id": "divband_control_plane",
+      "title": "Deploy Divband control plane",
+      "owner": "ansible",
+      "depends_on": ["gitlab_server"],
+      "depends_on_any": ["k8s_platform_addons_ansible", "k8s_platform_addons_terraform"],
+      "optional": false,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit 'k8s_control_plane[0]'",
+      "notes": "Requires the active profile k8s add-ons phase to be complete"
+    },
+    {
+      "id": "gitlab_runners_ansible",
+      "title": "Register GitLab runners",
+      "owner": "ansible",
+      "depends_on": ["gitlab_catalog_terraform"],
+      "optional": true,
+      "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/runners.yml",
+      "notes": "Needs runner tokens from Terraform outputs or Vault; skip if using shared/managed runners only"
+    },
+    {
+      "id": "platform_dns_terraform",
+      "title": "Publish platform DNS records",
+      "owner": "terraform",
+      "depends_on": [],
+      "depends_on_any": ["k8s_platform_addons_ansible", "k8s_platform_addons_terraform"],
+      "optional": true,
+      "working_dir": "infra/terraform/environments/production",
+      "command": "terraform -chdir=infra/terraform/environments/production apply -auto-approve",
+      "notes": "Cloudflare platform records; requires manage_platform_dns_records = true",
+      "probes": [
+        {
+          "id": "platform_dns_output",
+          "type": "terraform_output",
+          "working_dir": "infra/terraform/environments/production",
+          "output": "platform_dns"
+        }
+      ]
+    },
+    {
+      "id": "platform_ready",
+      "title": "Platform bootstrap complete",
+      "owner": "verify",
+      "depends_on": [
+        "k8s_control_plane",
+        "gitlab_server",
+        "gitlab_catalog_terraform",
+        "divband_control_plane"
+      ],
+      "depends_on_any": ["k8s_platform_addons_ansible", "k8s_platform_addons_terraform"],
+      "optional": false,
+      "command": "node infra/orchestration/plan-bootstrap.mjs --state infra/orchestration/state.json --probe",
+      "notes": "Hand off to backend API project lifecycle after this phase is complete"
+    }
+  ]
+}

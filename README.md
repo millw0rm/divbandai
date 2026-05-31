@@ -7,10 +7,13 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 ## Product planning
 
 - `docs/product.md` is the product source of truth for vision, MVP scope, user journeys, implementation status, backlog, open decisions, and release readiness. Start there when resuming product planning or prioritization.
+- `docs/mvp-scope.md` defines the minimal workable MVP: auth, projects, git + CI deploy, Kubernetes ingress, domain management, and agent instant publish — plus what to defer (multi-role RBAC, admin tooling, AI assistant).
+- `docs/architecture.md` describes the monorepo layout, control-plane services, request and provisioning flows, agent publish path, infrastructure bootstrap, and current implementation maturity.
 - `docs/local-mvp.md` describes the repeatable smallest useful local run path, including root scripts, mocked dependencies, and a smoke scenario.
 - `docs/design-system.md` and `docs/design-tokens.json` capture the reusable design language extracted from the imported Divband Studio bundle.
 - `docs/tasks.md` tracks actionable backlog tasks for automated testing and delegated DNS/nameserver support.
 - `docs/vm-reference-architecture.md` maps VM topologies to the Ansible inventory groups for persistent MVP infrastructure.
+- `docs/infrastructure-orchestration.md` defines Ansible vs Terraform ownership, bootstrap phase order, and the planner automation contract.
 - `docs/mvp-business-readiness.md` explains the difference between an operator-run MVP pilot and a public paid business launch.
 
 ## Repository map
@@ -21,7 +24,8 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 - `infra/ansible` — VM-IP based bootstrap playbooks for k3s, ingress, cert-manager, External Secrets, GitLab, runners, observability, and the Divband control plane.
 - `infra/k8s` — Kubernetes namespace, routing, policy, quota, and deployment templates.
 - `infra/gitlab` — GitLab CI templates and project/runner provisioning notes.
-- `infra/terraform` — Terraform modules for GitLab projects, Kubernetes tenants, and DNS/custom-domain records.
+- `infra/terraform` — Terraform modules for platform DNS, optional shared Kubernetes add-ons, and GitLab catalog contracts.
+- `infra/orchestration/` — bootstrap phase plan, state file, and planner CLI ([`docs/infrastructure-orchestration.md`](docs/infrastructure-orchestration.md))
 - `docs` — architecture, tenancy, security, deployment, domains, AI workflow, and operational runbooks.
 - `demo` — safe examples, demos, and walkthroughs that show how projects should behave before production hardening.
 - `sandbox` — draft area for experiments and unshipped ideas; nothing here should be deployed automatically.

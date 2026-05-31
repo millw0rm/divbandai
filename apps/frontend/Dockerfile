@@ -6,6 +6,8 @@ ENV NODE_ENV=development
 
 COPY package.json ./
 COPY apps/frontend/package.json apps/frontend/package.json
+COPY apps/backend/package.json apps/backend/package.json
+COPY packages/auth/package.json packages/auth/package.json
 
 RUN npm install --workspaces --include-workspace-root
 
@@ -15,7 +17,7 @@ ENV DIVBAND_API_BASE_URL=${DIVBAND_API_BASE_URL}
 
 COPY apps/frontend apps/frontend
 
-RUN npm run build --workspace @divband/frontend
+RUN node apps/frontend/scripts/build.mjs
 
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app/apps/frontend

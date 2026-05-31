@@ -7,7 +7,7 @@ Initial modules:
 - `src/backend-service.ts` provides a dependency-light request handler for the initial API surface.
 - `src/server.ts` adapts Node HTTP requests into `BackendService.handle` calls.
 - `src/config.ts` centralizes runtime environment configuration.
-- `src/runtime-store.ts` wires the in-memory store to SQLite for local development or PostgreSQL for production snapshots.
+- `src/runtime-store.ts` wires the application to an in-memory store by default, with snapshot persistence adapters available for later durable backends.
 - `src/project-lifecycle.ts` defines project states and orchestration steps.
 - `src/services/gitlab.ts` contains the GitLab repository integration boundary.
 - `src/services/kubernetes.ts` contains the Kubernetes namespace integration boundary.
@@ -20,7 +20,7 @@ The OpenAPI contract is maintained in `openapi.yaml`.
 
 ## Local startup
 
-The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's built-in type transform, and persists store snapshots to SQLite for local development or PostgreSQL when `DATABASE_URL` starts with `postgres://` or `postgresql://`. See `PRODUCTION.md` for deployment migrations and S3-compatible bucket setup.
+The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's built-in type transform, and keeps application state in memory by default. The service layer depends on `BackendStore` and a small `PersistenceAdapter` contract so a later SQL, NoSQL, or snapshot backend can be installed without changing request handlers.
 
 ### Required environment variables
 
@@ -29,7 +29,15 @@ The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's bu
 | `API_BASE_URL` | `http://localhost:3000` | Absolute URL used to parse incoming request paths and print startup status. |
 | `PUBLIC_SITE_DOMAIN` | `localhost.test` | Base domain for public hosted sites. |
 | `UPLOAD_DOMAIN` | `uploads.localhost.test` | Domain for upload URLs; defaults to `PUBLIC_SITE_DOMAIN` if omitted. |
-| `DATABASE_URL` | `sqlite://./data/divband-backend.sqlite` | SQLite file for local development or a `postgres://` / `postgresql://` URL for production PostgreSQL; defaults to the SQLite file. |
+| `PERSISTENCE_DRIVER` | `memory` | Optional persistence adapter selector: `memory`, `sqlite`, or `postgres`. Defaults to `memory`, unless `DATABASE_URL` implies a SQL adapter. |
+| `DATABASE_URL` | `postgresql://...` | Optional durable adapter URL. `postgres://` / `postgresql://` selects PostgreSQL, `sqlite://` / `file:` selects SQLite, and an omitted value keeps the in-memory adapter. |
+| `DIVBAND_SEED_DEMO_DATA` | `1` | Optional local/demo seed toggle. Enabled by default outside production; set to `0` to skip demo accounts. |
+| `SOURCE_CONTROL_PROVIDER` | `github` | Optional source-control adapter selector: `github` for local GitHub user-token flows or `gitlab` for the legacy GitLab adapter. |
+| `GITHUB_API_URL` | `https://api.github.com` | Optional GitHub API base URL for GitHub Enterprise or testing. |
+| `GITHUB_TOKEN` / `GITHUB_ACCESS_TOKEN` | `github_pat_...` | Optional platform-level GitHub token. For local user-on-behalf-of flows, prefer `/auth/github-identity` instead. |
+| `GITHUB_OAUTH_CLIENT_ID` | `Iv1...` | Optional OAuth app client ID for the dashboard `Connect GitHub` flow. |
+| `GITHUB_OAUTH_CLIENT_SECRET` | `...` | Optional OAuth app client secret for exchanging GitHub authorization codes. |
+| `GITHUB_OAUTH_CALLBACK_URL` | `http://localhost:3000/api/auth/callback/github` | Optional explicit callback URL; defaults to `${API_BASE_URL}/api/auth/callback/github`. |
 | `GITLAB_URL` | `https://gitlab.com` | GitLab instance base URL used by the GitLab service boundary. |
 | `KUBERNETES_CONFIG_MODE` / `KUBERNETES_MODE` | `disabled` | One of `disabled`, `in_cluster`, or `kubeconfig`; `KUBERNETES_MODE` is accepted for operator bootstrap hand-offs. |
 | `OBJECT_STORAGE_PROVIDER` | `auto` | `auto`, `memory`, or `s3`; `auto` selects S3 when access key and secret env vars are present, otherwise the in-memory development adapter. |
@@ -45,7 +53,7 @@ The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's bu
 
 ### Start the server
 
-Use Node 24+ so `node:sqlite` and `--experimental-transform-types` are available.
+Use Node 24+ so `--experimental-transform-types` is available.
 
 
 ```sh
@@ -53,7 +61,9 @@ cd apps/backend
 API_BASE_URL=http://localhost:3000 \
 PUBLIC_SITE_DOMAIN=localhost.test \
 UPLOAD_DOMAIN=uploads.localhost.test \
-DATABASE_URL=sqlite://./data/divband-backend.sqlite \
+PERSISTENCE_DRIVER=memory \
+DIVBAND_SEED_DEMO_DATA=1 \
+SOURCE_CONTROL_PROVIDER=github \
 GITLAB_URL=https://gitlab.com \
 KUBERNETES_CONFIG_MODE=disabled \
 OBJECT_STORAGE_BUCKET=divband-local \
@@ -93,8 +103,8 @@ A healthy response includes `status`, `repositoryUrl`, `namespaceProvisioned`, `
 
 ## Production adapters
 
-Use PostgreSQL and S3-compatible object storage for durable production runtime
-state:
+The local default is intentionally ephemeral. Use PostgreSQL and S3-compatible
+object storage for durable production runtime state:
 
 ```sh
 DATABASE_URL=postgresql://divband_backend:change-me@postgres.example.com:5432/divband_backend?sslmode=require

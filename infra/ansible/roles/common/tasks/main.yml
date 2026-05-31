@@ -11,8 +11,9 @@
     state: present
 
 - name: Set host timezone
-  community.general.timezone:
-    name: "{{ divband_timezone }}"
+  ansible.builtin.command:
+    cmd: "timedatectl set-timezone {{ divband_timezone }}"
+  changed_when: false
 
 - name: Enable systemd-timesyncd
   ansible.builtin.service:
@@ -74,10 +75,13 @@
   loop: "{{ divband_admin_users }}"
 
 - name: Install operator SSH keys
-  ansible.posix.authorized_key:
-    user: "{{ item.0.name }}"
-    key: "{{ item.1 }}"
-    state: present
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.0.name }}/.ssh/authorized_keys"
+    line: "{{ item.1 }}"
+    create: true
+    owner: "{{ item.0.name }}"
+    group: "{{ item.0.name }}"
+    mode: '0600'
   loop: "{{ divband_admin_users | subelements('ssh_keys', skip_missing=True) }}"
 
 - name: Harden sshd password authentication
@@ -97,30 +101,34 @@
   notify: Restart ssh
 
 - name: Configure default outgoing firewall policy
-  community.general.ufw:
-    direction: outgoing
-    policy: "{{ 'allow' if common_firewall_default_allow_outgoing else 'deny' }}"
+  ansible.builtin.command:
+    cmd: "ufw default {{ 'allow' if common_firewall_default_allow_outgoing else 'deny' }} outgoing"
+  changed_when: false
 
 - name: Configure default incoming firewall policy
-  community.general.ufw:
-    direction: incoming
-    policy: deny
+  ansible.builtin.command:
+    cmd: ufw default deny incoming
+  changed_when: false
 
 - name: Allow required TCP ports
-  community.general.ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
+  ansible.builtin.command:
+    cmd: "ufw allow {{ item }}/tcp"
+  register: common_ufw_allow_tcp
+  changed_when: "'Rule added' in common_ufw_allow_tcp.stdout"
   loop: "{{ common_firewall_allowed_tcp_ports }}"
 
 - name: Apply additional firewall rules
-  community.general.ufw:
-    rule: "{{ item.rule | default('allow') }}"
-    port: "{{ item.port | default(omit) }}"
-    proto: "{{ item.proto | default('tcp') }}"
-    src: "{{ item.src | default(omit) }}"
+  ansible.builtin.command:
+    cmd: >-
+      ufw {{ item.rule | default('allow') }}
+      {% if item.src is defined %}from {{ item.src }}{% endif %}
+      {% if item.port is defined %}to any port {{ item.port }} proto {{ item.proto | default('tcp') }}{% endif %}
+  register: common_ufw_additional
+  changed_when: "'Rule added' in common_ufw_additional.stdout"
   loop: "{{ common_firewall_additional_rules }}"
 
 - name: Enable firewall
-  community.general.ufw:
-    state: enabled
+  ansible.builtin.command:
+    cmd: ufw --force enable
+  register: common_ufw_enable
+  changed_when: "'Firewall is active' in common_ufw_enable.stdout"

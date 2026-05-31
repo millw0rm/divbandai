@@ -5,10 +5,10 @@
   when: kubernetes_distribution != 'k3s'
 
 - name: Allow Kubernetes API through host firewall
-  community.general.ufw:
-    rule: allow
-    port: "6443"
-    proto: tcp
+  ansible.builtin.command:
+    cmd: ufw allow 6443/tcp
+  register: kubernetes_ufw_api
+  changed_when: "'Rule added' in kubernetes_ufw_api.stdout"
   when: kubernetes_node_role == 'control_plane'
 
 - name: Install k3s server on control plane nodes
@@ -65,7 +65,7 @@
     mode: '0600'
     content: >-
       {{ k3s_kubeconfig.content | b64decode
-        | regex_replace('server: https://127\\.0\\.0\\.1:6443', 'server: ' ~ kubernetes_api_endpoint)
+        | replace('https://127.0.0.1:6443', kubernetes_api_endpoint)
         | regex_replace('name: default', 'name: ' ~ kubernetes_kubeconfig_context)
         | regex_replace('cluster: default', 'cluster: ' ~ kubernetes_kubeconfig_context)
         | regex_replace('user: default', 'user: ' ~ kubernetes_kubeconfig_context)

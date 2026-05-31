@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Project } from '../models.ts';
 
 export interface KubernetesNamespace {
@@ -97,13 +98,14 @@ const DEFAULT_TEMPLATE_FILES = [
   'static-site-deployment.yaml',
   'ingress.yaml',
 ];
+const moduleDir = dirname(fileURLToPath(import.meta.url));
 
 export class KubernetesService {
   private readonly baseDir: string;
   private readonly shouldApply: boolean;
 
   constructor(env: Record<string, string | undefined> = process.env) {
-    this.baseDir = env.KUBERNETES_TEMPLATE_DIR?.trim() || resolve(process.cwd(), 'infra/k8s/base');
+    this.baseDir = env.KUBERNETES_TEMPLATE_DIR?.trim() || resolve(moduleDir, '../../../../infra/k8s/base');
     this.shouldApply = ['1', 'true', 'yes', 'on'].includes((env.KUBERNETES_APPLY ?? '').toLowerCase());
   }
 

@@ -147,7 +147,9 @@ Each alert and admin action must link to a runbook that covers customer impact, 
 
 This runbook describes the concrete MVP path for one project. The backend owns
 per-project provisioning; Terraform owns shared infrastructure prerequisites and
-keeps per-project modules as contracts to avoid duplicate ownership.
+keeps per-project modules as contracts to avoid duplicate ownership. Platform
+bootstrap order and automation are defined in
+[`docs/infrastructure-orchestration.md`](infrastructure-orchestration.md).
 
 ### Prerequisites
 

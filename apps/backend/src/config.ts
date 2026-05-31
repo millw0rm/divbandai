@@ -4,6 +4,8 @@ export type ObjectStorageProvider = 'auto' | 'memory' | 's3';
 
 export type ManagedDnsProviderName = 'disabled' | 'http';
 
+export type PersistenceDriver = 'memory' | 'sqlite' | 'postgres';
+
 export interface ObjectStorageConfig {
   provider: ObjectStorageProvider;
   endpoint?: string;
@@ -30,9 +32,12 @@ export interface BackendRuntimeConfig {
   apiBaseUrl: string;
   publicSiteDomain: string;
   uploadDomain: string;
-  databaseUrl: string;
+  persistenceDriver: PersistenceDriver;
+  databaseUrl?: string;
   gitLabUrl: string;
   kubernetesConfigMode: KubernetesConfigMode;
+  requireEmailVerification: boolean;
+  seedDemoData: boolean;
   objectStorage: ObjectStorageConfig;
   managedDns: ManagedDnsConfig;
 }
@@ -46,9 +51,12 @@ export function loadBackendConfig(env: Record<string, string | undefined> = proc
     apiBaseUrl: required(env.API_BASE_URL, 'API_BASE_URL'),
     publicSiteDomain,
     uploadDomain,
-    databaseUrl: env.DATABASE_URL?.trim() || 'sqlite://./data/divband-backend.sqlite',
+    persistenceDriver: persistenceDriver(env.PERSISTENCE_DRIVER, env.DATABASE_URL),
+    databaseUrl: emptyToUndefined(env.DATABASE_URL),
     gitLabUrl: env.GITLAB_URL?.trim() || 'https://gitlab.com',
     kubernetesConfigMode: kubernetesMode(env.KUBERNETES_CONFIG_MODE ?? env.KUBERNETES_MODE),
+    requireEmailVerification: boolean(env.DIVBAND_REQUIRE_EMAIL_VERIFICATION, true),
+    seedDemoData: boolean(env.DIVBAND_SEED_DEMO_DATA, env.NODE_ENV !== 'production'),
     objectStorage: {
       provider: objectStorageProvider(env.OBJECT_STORAGE_PROVIDER),
       endpoint: emptyToUndefined(env.OBJECT_STORAGE_ENDPOINT),
@@ -113,6 +121,20 @@ function objectStorageProvider(value: string | undefined): ObjectStorageProvider
     return value;
   }
   return 'auto';
+}
+
+function persistenceDriver(value: string | undefined, databaseUrl: string | undefined): PersistenceDriver {
+  if (value === 'memory' || value === 'sqlite' || value === 'postgres') {
+    return value;
+  }
+  const trimmedDatabaseUrl = databaseUrl?.trim();
+  if (trimmedDatabaseUrl?.startsWith('postgres://') || trimmedDatabaseUrl?.startsWith('postgresql://')) {
+    return 'postgres';
+  }
+  if (trimmedDatabaseUrl?.startsWith('sqlite://') || trimmedDatabaseUrl?.startsWith('file:')) {
+    return 'sqlite';
+  }
+  return 'memory';
 }
 
 function kubernetesMode(value: string | undefined): KubernetesConfigMode {

@@ -137,10 +137,24 @@ export interface OAuthIdentity {
 export interface GitLabIdentityLink {
   id: string;
   userId: string;
+  provider?: 'gitlab' | 'github';
   gitlabUserId: string;
   username: string;
   accessTokenHash?: string;
+  accessToken?: string;
   linkedAt: string;
+}
+
+export interface SourceControlOAuthState {
+  id: string;
+  provider: 'github';
+  state: string;
+  userId: string;
+  projectId?: string;
+  returnTo: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
 }
 
 export type PlatformAdminRole = 'support' | 'security' | 'super_admin';
@@ -285,6 +299,7 @@ export interface Project {
   platformHostname: string;
   runnerTag: string;
   repositoryUrl?: string;
+  repository?: ProjectRepository;
   namespaceProvisioned: boolean;
   platformSubdomainAttached: boolean;
   domains: ProjectDomain[];
@@ -296,6 +311,15 @@ export interface Project {
   suspensionReason?: string;
   deploymentRestrictedAt?: string;
   deploymentRestrictionReason?: string;
+}
+
+export interface ProjectRepository {
+  provider: 'github' | 'gitlab';
+  path: string;
+  webUrl: string;
+  cloneUrl: string;
+  defaultBranch: string;
+  connectedAt: string;
 }
 
 export interface PublishFileManifest {

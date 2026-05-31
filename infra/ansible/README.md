@@ -35,6 +35,8 @@ The role currently enforces this boundary with `kubernetes_distribution: k3s`; s
 - `roles/gitlab` — connects to an existing GitLab endpoint, installs self-hosted GitLab when `gitlab_mode: install` is selected, and can run the Terraform stack under `../gitlab/terraform`.
 - `roles/gitlab_runner` — validates that a runner token source exists before package installation, resolves project runner tags and authentication tokens from Terraform outputs or Vault, disables untagged jobs, and registers dedicated runners.
 - `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer.
+- `roles/cluster_registry` — creates the k3s-hosted registry used by the single-VPS GitHub deployment flow.
+- `roles/divband_release` — checks out the GitHub source, builds backend/frontend images, pushes them to the k3s registry, and passes those image names to `roles/divband_app`.
 
 ## Integration points
 
@@ -42,6 +44,7 @@ This Ansible layer intentionally reuses existing repository paths instead of dup
 
 - Kubernetes tenant templates are read from `infra/k8s/base/` and can be applied with `divband_apply_base_templates: true` after replacing placeholders or adapting the kustomization flow.
 - GitLab tenant/project provisioning is delegated to the Terraform stack in `infra/gitlab/terraform/` when `gitlab_run_terraform: true` is set.
+- Bootstrap phase order, Ansible vs Terraform ownership, and the planner CLI are documented in [`docs/infrastructure-orchestration.md`](../../docs/infrastructure-orchestration.md) and [`infra/orchestration/`](../orchestration/).
 - The backend service uses `apps/backend/src/services/kubernetes.ts`, which defaults `KUBERNETES_TEMPLATE_DIR` to `infra/k8s/base` and can apply rendered manifests when `KUBERNETES_APPLY=true`.
 - The backend runtime accepts `KUBERNETES_CONFIG_MODE=kubeconfig` and the operator-facing `KUBERNETES_MODE=kubeconfig`; Ansible sets both and mounts `KUBECONFIG` from the generated cluster kubeconfig secret.
 - GitLab CI templates expect a base64 kubeconfig variable (`KUBE_CONFIG_B64`), and `infra/gitlab/terraform/projects.auto.tfvars.example` also shows the optional plain `KUBE_CONFIG` hand-off.
@@ -173,6 +176,29 @@ REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-p
 # or
 make deploy-production REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0
 ```
+
+### Single-VPS GitHub CI deployment
+
+For the current single-VPS GitHub flow, `.github/workflows/deploy-vps.yml` runs on pushes to `main` and can also be triggered manually. It creates a temporary Ansible inventory in the GitHub Actions runner, connects to the VPS over SSH, runs `playbooks/deploy-divband-from-github.yml`, and deploys images built from `https://github.com/millw0rm/divband.git` through the in-cluster registry.
+
+Required GitHub secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `DIVBAND_KEYRING_PASSWORD` | Password used to decrypt `infra/keys/encrypted/github-actions-divband-vps.key.enc` during the workflow. |
+
+Optional GitHub Actions variables:
+
+| Variable | Default |
+| --- | --- |
+| `DIVBAND_VPS_HOST` | `185.204.170.33` |
+| `DIVBAND_VPS_USER` | `ubuntu` |
+| `DIVBAND_SOURCE_REPO_URL` | `https://github.com/millw0rm/divband.git` |
+| `DIVBAND_PUBLIC_HOSTNAME` | `185.204.170.33.nip.io` |
+| `DIVBAND_API_BASE_URL` | `http://185.204.170.33/api` |
+| `DIVBAND_PUBLIC_SITE_DOMAIN` | `185.204.170.33.nip.io` |
+| `DIVBAND_UPLOAD_DOMAIN` | `uploads.185.204.170.33.nip.io` |
+| `CLUSTER_REGISTRY_ENDPOINT` | `localhost:30500` |
 
 Required or commonly customized variables:
 
