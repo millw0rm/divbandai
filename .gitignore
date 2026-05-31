@@ -1,6 +1,10 @@
 node_modules/
 dist/
+.next/
+apps/**/.next/
+apps/**/data/
 .env
 .env.*
 infra/ansible/inventory.yml
 infra/ansible/artifacts/
+infra/orchestration/state.json

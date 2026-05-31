@@ -1,6 +1,6 @@
 # Terraform infrastructure
 
-Terraform in this directory is split by ownership boundary so the same resource is not provisioned by two systems at the same time.
+Terraform in this directory is split by ownership boundary so the same resource is not provisioned by two systems at the same time. See [`docs/infrastructure-orchestration.md`](../../docs/infrastructure-orchestration.md) and [`infra/orchestration/`](../orchestration/) for bootstrap phase order and when to run Terraform vs Ansible.
 
 ## Shared platform provisioning
 

@@ -98,7 +98,7 @@ Root `package.json` defines npm workspaces and dev scripts (`dev:backend`, `dev:
 3. **Auth package (`packages/auth`)** — centralizes project roles, permissions, and project-scoped access checks reused by the API and future workers.
 4. **GitLab integration (`infra/gitlab`)** — creates one GitLab project per divband project, configures CI/CD variables, and assigns project-specific runner tags.
 5. **Kubernetes runtime (`infra/k8s`)** — creates one private namespace per project with resource quotas, network policies, service accounts, workloads, services, and host-based routes.
-6. **Terraform stacks (`infra/terraform`)** — provision durable resources such as DNS zones and records, GitLab groups/projects, runners, registries, and Kubernetes clusters.
+6. **Terraform stacks (`infra/terraform`)** — provision durable resources such as DNS zones and records, GitLab groups/projects, runners, registries, and Kubernetes clusters. See [`docs/infrastructure-orchestration.md`](infrastructure-orchestration.md) for Ansible vs Terraform ownership and bootstrap automation.
 
 ## Backend (`apps/backend`)
 

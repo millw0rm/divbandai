@@ -42,6 +42,7 @@ This Ansible layer intentionally reuses existing repository paths instead of dup
 
 - Kubernetes tenant templates are read from `infra/k8s/base/` and can be applied with `divband_apply_base_templates: true` after replacing placeholders or adapting the kustomization flow.
 - GitLab tenant/project provisioning is delegated to the Terraform stack in `infra/gitlab/terraform/` when `gitlab_run_terraform: true` is set.
+- Bootstrap phase order, Ansible vs Terraform ownership, and the planner CLI are documented in [`docs/infrastructure-orchestration.md`](../../docs/infrastructure-orchestration.md) and [`infra/orchestration/`](../orchestration/).
 - The backend service uses `apps/backend/src/services/kubernetes.ts`, which defaults `KUBERNETES_TEMPLATE_DIR` to `infra/k8s/base` and can apply rendered manifests when `KUBERNETES_APPLY=true`.
 - The backend runtime accepts `KUBERNETES_CONFIG_MODE=kubeconfig` and the operator-facing `KUBERNETES_MODE=kubeconfig`; Ansible sets both and mounts `KUBECONFIG` from the generated cluster kubeconfig secret.
 - GitLab CI templates expect a base64 kubeconfig variable (`KUBE_CONFIG_B64`), and `infra/gitlab/terraform/projects.auto.tfvars.example` also shows the optional plain `KUBE_CONFIG` hand-off.
