@@ -7,6 +7,7 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 ## Product planning
 
 - `docs/product.md` is the product source of truth for vision, MVP scope, user journeys, implementation status, backlog, open decisions, and release readiness. Start there when resuming product planning or prioritization.
+- `docs/mvp-scope.md` defines the minimal workable MVP: auth, projects, git + CI deploy, Kubernetes ingress, domain management, and agent instant publish — plus what to defer (multi-role RBAC, admin tooling, AI assistant).
 - `docs/architecture.md` describes the monorepo layout, control-plane services, request and provisioning flows, agent publish path, infrastructure bootstrap, and current implementation maturity.
 - `docs/local-mvp.md` describes the repeatable smallest useful local run path, including root scripts, mocked dependencies, and a smoke scenario.
 - `docs/design-system.md` and `docs/design-tokens.json` capture the reusable design language extracted from the imported Divband Studio bundle.
