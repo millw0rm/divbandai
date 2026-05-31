@@ -10,6 +10,23 @@ Required secret for CI:
 DIVBAND_KEYRING_PASSWORD
 ```
 
+Configure the GitHub repository secret and deployment variables with the GitHub
+CLI:
+
+```sh
+gh auth login -h github.com
+scripts/configure-github-actions-secrets.sh
+```
+
+Or through Ansible:
+
+```sh
+ansible-playbook infra/ansible/playbooks/configure-github-actions.yml
+```
+
+The repository does not vendor a `gh` binary. Operators should install and
+authenticate GitHub CLI on the machine that owns repository administration.
+
 Local encrypt/decrypt:
 
 ```sh

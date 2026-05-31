@@ -10,6 +10,7 @@ The platform provisions a private GitLab project, isolated GitLab runner configu
 - `docs/mvp-scope.md` defines the minimal workable MVP: auth, projects, git + CI deploy, Kubernetes ingress, domain management, and agent instant publish — plus what to defer (multi-role RBAC, admin tooling, AI assistant).
 - `docs/architecture.md` describes the monorepo layout, control-plane services, request and provisioning flows, agent publish path, infrastructure bootstrap, and current implementation maturity.
 - `docs/local-mvp.md` describes the repeatable smallest useful local run path, including root scripts, mocked dependencies, and a smoke scenario.
+- `docs/development-vs-production.md` contrasts the local development run path (`npm run dev:mvp`) with infrastructure and production deployment (`make deploy-production`, Ansible, Kubernetes, CI).
 - `docs/design-system.md` and `docs/design-tokens.json` capture the reusable design language extracted from the imported Divband Studio bundle.
 - `docs/tasks.md` tracks actionable backlog tasks for automated testing and delegated DNS/nameserver support.
 - `docs/vm-reference-architecture.md` maps VM topologies to the Ansible inventory groups for persistent MVP infrastructure.

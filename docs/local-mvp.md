@@ -1,13 +1,15 @@
 # Local MVP
 
-This guide describes the smallest useful local divband setup: one API process, one static dashboard process, in-memory application state, and mocked platform integrations. It is intended for repeatable product and API smoke testing before production GitLab, Kubernetes, DNS, certificate, storage, email, billing, and durable persistence adapters are connected.
+This guide describes the smallest useful local divband setup: a single Next.js dev server with an embedded API, in-memory application state, and mocked platform integrations. It is intended for repeatable product and API smoke testing before production GitLab, Kubernetes, DNS, certificate, storage, email, billing, and durable persistence adapters are connected.
+
+For how this path compares to Ansible, Kubernetes, and production deployment scripts, see [`development-vs-production.md`](./development-vs-production.md).
 
 ## What runs locally
 
 | Area | Local MVP behavior | Real or mocked locally? |
 | --- | --- | --- |
 | Backend API | Node HTTP server from `apps/backend` on `http://localhost:3000`. | Real local process. |
-| Frontend dashboard | Static dashboard bundle from `apps/frontend` on `http://localhost:5173`. | Real local process. |
+| Frontend dashboard | Next.js app from `apps/frontend` on `http://localhost:3000` (API proxied at `/api/*`). | Real local process. |
 | Application state | In-memory `BackendStore` maps and arrays behind the runtime persistence adapter. Data resets when the process restarts. | Real local process memory. |
 | GitLab | Service boundary returns deterministic repository/runner metadata when called; no remote project is created in the basic smoke path. | Mocked locally. |
 | Kubernetes | `KUBERNETES_CONFIG_MODE=disabled`; namespace operations stay inside the service boundary. | Mocked locally. |
@@ -89,13 +91,13 @@ npm install
 
 ## Start the smallest useful stack
 
-From the repository root, run both local processes:
+From the repository root, run:
 
 ```sh
 npm run dev:mvp
 ```
 
-The script starts the backend first with local-safe environment variables, then builds and serves the dashboard with `DIVBAND_API_BASE_URL=http://localhost:3000`.
+This starts Next.js on port 3000 with local-safe environment variables and an in-process API (`apps/frontend/app/api/[[...path]]/route.ts`). The dashboard talks to `/api/*` on the same origin.
 
 If you prefer separate terminals, use:
 
@@ -111,12 +113,12 @@ No `docker-compose.yml` is required for the current MVP because application stat
 
 ## Smoke scenario
 
-Keep `npm run dev:mvp` running, then execute the following commands from another shell at the repository root. The scenario registers a user, creates a project, publishes the project by recording a successful deployment, fetches status, and opens the dashboard.
+Keep `npm run dev:mvp` running, then execute the following commands from another shell at the repository root. The scenario registers a user, creates a project, publishes the project by recording a successful deployment, fetches status, and opens the dashboard. API paths use the `/api` prefix because `dev:mvp` serves the backend through Next.js. If you use `npm run dev:backend` instead, drop the `/api` segment from each URL.
 
 ### 1. Register a user
 
 ```sh
-REGISTER_RESPONSE=$(curl -sS -X POST http://localhost:3000/auth/register \
+REGISTER_RESPONSE=$(curl -sS -X POST http://localhost:3000/api/auth/register \
   -H 'content-type: application/json' \
   -d '{"email":"dev@example.com","name":"Dev User","password":"correct-horse"}')
 TOKEN=$(printf '%s' "$REGISTER_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
@@ -125,7 +127,7 @@ TOKEN=$(printf '%s' "$REGISTER_RESPONSE" | python3 -c 'import json,sys; print(js
 ### 2. Create a project
 
 ```sh
-CREATE_RESPONSE=$(curl -sS -X POST http://localhost:3000/projects \
+CREATE_RESPONSE=$(curl -sS -X POST http://localhost:3000/api/projects \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d '{"name":"Demo Site","slug":"demo-site"}')
@@ -135,7 +137,7 @@ PROJECT_ID=$(printf '%s' "$CREATE_RESPONSE" | python3 -c 'import json,sys; print
 ### 3. Attach the local platform hostname
 
 ```sh
-curl -sS -X POST "http://localhost:3000/projects/$PROJECT_ID/platform-subdomain" \
+curl -sS -X POST "http://localhost:3000/api/projects/$PROJECT_ID/platform-subdomain" \
   -H "authorization: Bearer $TOKEN"
 ```
 
@@ -144,13 +146,13 @@ curl -sS -X POST "http://localhost:3000/projects/$PROJECT_ID/platform-subdomain"
 The local MVP treats this as the project publish/finalize step because CI/CD and Kubernetes are mocked. It records the deployment as succeeded and moves the project to `deployed`.
 
 ```sh
-DEPLOYMENT_RESPONSE=$(curl -sS -X POST "http://localhost:3000/projects/$PROJECT_ID/deployments" \
+DEPLOYMENT_RESPONSE=$(curl -sS -X POST "http://localhost:3000/api/projects/$PROJECT_ID/deployments" \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d '{"gitRef":"main","commitSha":"local-smoke"}')
 DEPLOYMENT_ID=$(printf '%s' "$DEPLOYMENT_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["deployment"]["id"])')
 
-curl -sS -X PUT "http://localhost:3000/projects/$PROJECT_ID/deployments/$DEPLOYMENT_ID/status" \
+curl -sS -X PUT "http://localhost:3000/api/projects/$PROJECT_ID/deployments/$DEPLOYMENT_ID/status" \
   -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
   -d '{"state":"succeeded","gitRef":"main","commitSha":"local-smoke","environment":"production","ingressHostname":"demo-site.localhost.test","healthCheckUrl":"http://demo-site.localhost.test/healthz","logLine":"local MVP deployment published"}'
@@ -159,7 +161,7 @@ curl -sS -X PUT "http://localhost:3000/projects/$PROJECT_ID/deployments/$DEPLOYM
 ### 5. Fetch status
 
 ```sh
-curl -sS "http://localhost:3000/projects/$PROJECT_ID/status" \
+curl -sS "http://localhost:3000/api/projects/$PROJECT_ID/status" \
   -H "authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
 
@@ -171,7 +173,7 @@ Expected highlights:
 
 ### 6. View the dashboard
 
-Open `http://localhost:5173` in a browser, sign in as `dev@example.com` with password `correct-horse`, and verify the project appears in the dashboard. The project overview should show the deployed status and the latest deployment details.
+Open `http://localhost:3000` in a browser, sign in as `dev@example.com` with password `correct-horse`, and verify the project appears in the dashboard. The project overview should show the deployed status and the latest deployment details.
 
 
 ## Agent static publish smoke path
@@ -205,5 +207,5 @@ npm run typecheck
 Check backend health while it is running:
 
 ```sh
-curl -sS http://localhost:3000/healthz
+curl -sS http://localhost:3000/api/healthz
 ```

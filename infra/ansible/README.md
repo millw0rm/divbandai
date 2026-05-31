@@ -187,6 +187,22 @@ Required GitHub secret:
 | --- | --- |
 | `DIVBAND_KEYRING_PASSWORD` | Password used to decrypt `infra/keys/encrypted/github-actions-divband-vps.key.enc` during the workflow. |
 
+Set the secret and standard workflow variables with GitHub CLI:
+
+```sh
+gh auth login -h github.com
+scripts/configure-github-actions-secrets.sh
+```
+
+The same setup can be run as a local Ansible playbook:
+
+```sh
+ansible-playbook infra/ansible/playbooks/configure-github-actions.yml
+```
+
+Both commands require `gh` to be installed and authenticated as an account that
+can manage Actions secrets and variables for the repository.
+
 Optional GitHub Actions variables:
 
 | Variable | Default |

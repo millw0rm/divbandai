@@ -1,6 +1,6 @@
 # divband architecture
 
-This document describes how the divband monorepo is organized, how the control plane orchestrates tenant projects, and how traffic reaches hosted workloads. For product scope and release readiness, see `docs/product.md`. For the prioritized minimal MVP cut, see `docs/mvp-scope.md`. For running the stack locally, see `docs/local-mvp.md`.
+This document describes how the divband monorepo is organized, how the control plane orchestrates tenant projects, and how traffic reaches hosted workloads. For product scope and release readiness, see `docs/product.md`. For the prioritized minimal MVP cut, see `docs/mvp-scope.md`. For running the stack locally, see `docs/local-mvp.md`. For how local development differs from production deployment entrypoints, see `docs/development-vs-production.md`.
 
 ## Platform purpose
 
