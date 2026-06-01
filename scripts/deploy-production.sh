@@ -15,6 +15,8 @@ Optional:
   ANSIBLE_EXTRA_ARGS               Extra arguments appended to ansible-playbook.
   DIVBAND_BACKEND_IMAGE_REPOSITORY Backend image repository. Defaults to $REGISTRY/backend.
   DIVBAND_FRONTEND_IMAGE_REPOSITORY Frontend image repository. Defaults to $REGISTRY/frontend.
+  DIVBAND_SKIP_INFRA_PREFLIGHT     Set to 1 to skip GitHub, Actions, inventory,
+                                   and VM SSH readiness checks.
 
 Example:
   REGISTRY=registry.gitlab.com/divband/control-plane TAG=v1.0.0 ./scripts/deploy-production.sh
@@ -61,6 +63,10 @@ FRONTEND_IMAGE="${FRONTEND_IMAGE_REPOSITORY}:${TAG}"
 if [[ ! -f "${INVENTORY_PATH}" ]]; then
   echo "error: Ansible inventory does not exist: ${INVENTORY_PATH}" >&2
   exit 1
+fi
+
+if [[ "${DIVBAND_SKIP_INFRA_PREFLIGHT:-0}" != "1" ]]; then
+  ANSIBLE_INVENTORY="${ANSIBLE_INVENTORY}" "${REPO_ROOT}/scripts/preflight-infrastructure.sh"
 fi
 
 printf 'Backend image: %s\n' "${BACKEND_IMAGE}"

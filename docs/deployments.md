@@ -2,12 +2,24 @@
 
 Divband deployments are GitLab-driven, namespace-scoped rollouts. The backend remains the source of truth for project state, while GitLab CI performs the build, registry, Kubernetes, ingress, health-check, status-reporting, and rollback work for each project.
 
+Related docs: [`product.md`](product.md), [`gitlab.md`](gitlab.md), [`operations.md`](operations.md), [`architecture.md`](architecture.md), [`infra/k8s/README.md`](../infra/k8s/README.md), [`infra/gitlab/ci-templates/`](../infra/gitlab/ci-templates/).
+
+## Welcome site (automatic bootstrap)
+
+Before the first GitLab-driven deploy, cluster-backed backends provision a **welcome nginx page** in `project-{slug}` when the user creates the project:
+
+1. `POST /projects` triggers `kubectl apply` for the welcome profile (`welcome-deployment.yaml`, `ingress-platform.yaml`, plus namespace/RBAC/policy templates).
+2. The backend records a successful welcome deployment and marks the platform hostname live.
+3. Visitors hitting the platform URL see a placeholder page until CI replaces the `welcome` deployment with the customer's workload.
+
+Local development skips this path (`KUBERNETES_CONFIG_MODE=disabled`). See [`development-vs-production.md`](development-vs-production.md) and [`README.md`](../README.md#project-auto-provision-on-k3s).
+
 ## End-to-end production flow
 
 1. **Commit pushed to GitLab** — A user pushes to the project repository on `git.divband.ir/{tenant}/{project}`. The project includes one of the reusable templates from `infra/gitlab/ci-templates/` and runs only on the project-scoped `DIVBAND_RUNNER_TAG`.
 2. **GitLab runner builds artifact/container** — The assigned runner checks out the commit, installs dependencies, runs project tests/builds, and creates either a static artifact or a container build context.
 3. **Image pushed to registry** — Kaniko publishes immutable images to the project container registry with `$CI_COMMIT_SHA` and branch/latest tags. Deployments should use the immutable SHA tag or digest.
-4. **CI deploys to project namespace** — The deploy job decodes `KUBE_CONFIG_B64`, selects `KUBE_CONTEXT`, and updates only the configured workload in `DIVBAND_NAMESPACE`.
+4. **CI deploys to project namespace** — The deploy job decodes `KUBE_CONFIG_B64`, selects `KUBE_CONTEXT`, and updates the configured workload in `DIVBAND_NAMESPACE` (`project-{slug}`), replacing the welcome nginx deployment when this is the first app deploy.
 5. **Ingress route is updated** — CI applies or patches the project `Ingress`/`HTTPRoute` so the platform hostname or preview hostname points at the new service.
 6. **Health checks run** — CI waits for `kubectl rollout status`, then calls the configured health endpoint (`HEALTHCHECK_URL` or the route URL) and fails if the route does not respond successfully.
 7. **Deployment status is reported to the backend** — CI posts lifecycle transitions to `POST /projects/{projectId}/deployments/report` using `DIVBAND_API_BASE_URL`, `DIVBAND_PROJECT_ID`, and a project API token. Reports include state, commit, pipeline, image, route, and health-check metadata.

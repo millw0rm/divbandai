@@ -62,7 +62,7 @@ export async function seedDemoData(store: BackendStore, options: { enabled?: boo
   await ensureProjectMember(backend, owner.token, project.id, admin.user.id, 'admin');
   await ensureProjectMember(backend, owner.token, project.id, developer.user.id, 'developer');
   await ensureProjectMember(backend, owner.token, project.id, viewer.user.id, 'viewer');
-  await request(backend, 'POST', `/projects/${project.id}/platform-subdomain`, {}, owner.token);
+  await tryRequest(backend, 'POST', `/projects/${project.id}/github-repository`, {}, owner.token);
 
   return {
     password: demoPassword,
@@ -95,6 +95,7 @@ async function ensureDemoUser(backend: BackendService, account: { email: string;
   const registered = await request<{ user: User; token: string }>(backend, 'POST', '/auth/register', {
     email: account.email,
     name: account.name,
+    username: account.email.split('@')[0]?.replace(/[^a-z0-9-]/gi, '-').toLowerCase() || 'demo-user',
     password: demoPassword,
   });
   return { user: registered.user, token: registered.token };

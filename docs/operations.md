@@ -171,27 +171,36 @@ bootstrap order and automation are defined in
 
 1. **Create the project record.** `POST /projects` validates the organization,
    normalizes the slug, and stores the lifecycle plan: GitLab path, Kubernetes
-   namespace, platform hostname, and runner tag.
-2. **Provision GitLab.** `POST /projects/{id}/gitlab-repository` calls the
-   GitLab adapter. The adapter creates or reuses the GitLab project, configures
-   Divband CI/CD variables and protected project secrets, protects the default
-   branch, and creates either a deploy token or project access token for runtime
-   pulls. AI workflows use the same adapter to create branches, open merge
-   requests, and trigger GitLab pipelines.
-3. **Provision Kubernetes.** `POST /projects/{id}/kubernetes-namespace` renders
-   the `infra/k8s/base` templates with project ID, slug, tenant, owner,
-   environment, quota, image, hostname, ingress, TLS, and External Secrets
-   values. When `KUBERNETES_APPLY=true`, the backend runs `kubectl apply -f -`;
-   otherwise the response includes the rendered manifest bundle for an operator
-   or GitOps controller to apply.
-4. **Attach the platform hostname.** `POST /projects/{id}/platform-subdomain`
-   marks the default platform hostname active after the shared wildcard DNS and
-   ingress route are available. The rendered ingress points at the public service
-   in the tenant namespace and requests TLS through the configured cluster issuer.
+   namespace (`project-{slug}`), platform hostname, and runner tag.
+   When `KUBERNETES_APPLY=true` and auto-provision is enabled
+   (`DIVBAND_AUTO_PROVISION_PROJECTS`, on by default on k3s/VPS backends),
+   the same request also renders and applies the **welcome stack** from
+   `infra/k8s/base/` (namespace, quota, RBAC, network policy, nginx welcome
+   page, platform ingress), records a successful welcome deployment, and marks
+   the platform hostname attached. Failures are logged to the audit trail but do
+   not roll back the project record; retry with
+   `POST /projects/{id}/kubernetes-namespace`.
+2. **Provision GitLab or GitHub (optional for first traffic).**
+   `POST /projects/{id}/gitlab-repository` or `…/github-repository` calls the
+   source-control adapter. The adapter creates or reuses the remote repository,
+   configures Divband CI/CD variables and protected project secrets, protects the
+   default branch, and creates either a deploy token or project access token for
+   runtime pulls. AI workflows use the same adapter to create branches, open
+   merge requests, and trigger GitLab pipelines.
+3. **Provision Kubernetes (automatic or manual retry).** On project create the
+   backend applies the welcome profile by default when cluster apply is enabled.
+   `POST /projects/{id}/kubernetes-namespace` remains available as an idempotent
+   retry that applies the same welcome stack through `kubectl apply -f -` when
+   `KUBERNETES_APPLY=true`; otherwise the response includes rendered manifests
+   for an operator or GitOps controller.
+4. **Platform hostname.** Attached automatically with the welcome deployment on
+   create. `POST /projects/{id}/platform-subdomain` is still available when a
+   later non-welcome deployment succeeds and the hostname was not marked active.
 5. **Deploy application code.** `POST /projects/{id}/deployments` records a
    deployment and GitLab CI builds/publishes images. Deployment jobs update
    `/projects/{id}/deployments/report` with pipeline IDs, commit SHAs, image
-   digests, ingress hostname, health-check URL, and rollout state.
+   digests, ingress hostname, health-check URL, and rollout state. CI replaces
+   the welcome nginx deployment in `project-{slug}`.
 6. **Verify custom domains.** `POST /projects/{id}/domains` returns a TXT record
    named `_divband.<hostname>` with value `divband-verification=<token>`. For
    delegated zones, the managed-DNS adapter creates that TXT record and later
@@ -296,4 +305,14 @@ Before switching `DIVBAND_SIGNUP_MODE=public`, run:
 npm run smoke:controls --workspace @divband/backend
 ```
 
-The smoke test covers invite-gated signup, email verification, login, project creation, platform-hostname attachment, deployment trigger, project-status live access, password reset, and post-reset login. Public signup remains invite-only until this smoke test and the restore smoke test pass in the target environment.
+The smoke test covers invite-gated signup, email verification, login, project creation, platform-hostname attachment, deployment trigger, project-status live access, password reset, and post-reset login. On k3s backends, project creation should also leave a welcome deployment and `project-{slug}` namespace in place before CI runs. Public signup remains invite-only until this smoke test and the restore smoke test pass in the target environment.
+
+## Related documentation
+
+| Topic | Document |
+| --- | --- |
+| MVP provisioning runbook | [`infrastructure-orchestration.md`](infrastructure-orchestration.md), [`architecture.md`](architecture.md) |
+| Auto welcome stack | [`README.md`](../README.md#project-auto-provision-on-k3s), [`infra/k8s/README.md`](../infra/k8s/README.md) |
+| CI deploy loop | [`deployments.md`](deployments.md), [`gitlab.md`](gitlab.md) |
+| Tenancy | [`tenancy.md`](tenancy.md) |
+| Product checklist | [`product.md`](product.md) |

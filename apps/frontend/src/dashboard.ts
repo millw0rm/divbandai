@@ -1,3 +1,5 @@
+import { clearAuthToken, getAuthToken, getStoredAuthUser, setAuthSession } from './auth-session';
+
 export type ProjectLifecycleState =
   | 'created'
   | 'repository_provisioned'
@@ -11,8 +13,6 @@ export type ProjectLifecycleState =
 export type BackendProjectStatus = ProjectLifecycleState | 'draft' | 'archived';
 
 export type DashboardPageId =
-  | 'sign-in'
-  | 'sign-up'
   | 'agent-quickstart'
   | 'project-list'
   | 'create-project'
@@ -48,6 +48,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  username: string;
   createdAt: string;
   suspendedAt?: string;
   suspensionReason?: string;
@@ -180,6 +181,7 @@ export interface Project {
   gitlabPath: string;
   namespace: string;
   platformHostname: string;
+  workspaceHostname: string;
   runnerTag: string;
   repositoryUrl?: string;
   repository?: ProjectRepository;
@@ -201,6 +203,7 @@ export interface ProjectRepository {
   cloneUrl: string;
   defaultBranch: string;
   connectedAt: string;
+  offline?: boolean;
 }
 
 export interface RepositoryFile {
@@ -221,6 +224,25 @@ export interface ProjectStatusSummary {
   latestDeployment?: Deployment;
 }
 
+export interface GitHubConnectionStatus {
+  configured: boolean;
+  connected: boolean;
+  username?: string;
+  clientIdSource?: 'custom' | 'bundled';
+  clientIdPreview?: string;
+  callbackUrl?: string;
+  usingCustomCredentials?: boolean;
+  serverReachable?: boolean;
+}
+
+export interface GitHubRepositorySummary {
+  name: string;
+  fullName: string;
+  webUrl: string;
+  private: boolean;
+  defaultBranch: string;
+}
+
 export interface DashboardState {
   currentPage: DashboardPageId;
   user?: AuthUser;
@@ -228,6 +250,8 @@ export interface DashboardState {
   projects: Project[];
   selectedProjectId?: string;
   statusSummary?: ProjectStatusSummary;
+  githubStatus?: GitHubConnectionStatus;
+  githubRepositories: GitHubRepositorySummary[];
   repositoryFiles: RepositoryFile[];
   logs: Array<Pick<Deployment, 'id' | 'state' | 'logs'>>;
   environmentVariables: EnvironmentVariable[];
@@ -243,6 +267,8 @@ export interface DashboardState {
   aiChangeRequests: AiChangeRequest[];
   loading: boolean;
   error?: string;
+  notice?: string;
+  noticeVariant?: 'success' | 'error';
 }
 
 export interface AssistantMessage {
@@ -337,6 +363,46 @@ const agentRoadmapPhases = [
   { id: 'P4', name: 'Full project hosting', status: 'later', description: 'Production GitLab, Kubernetes, Terraform, runner, namespace, and route adapters.' },
 ];
 
+const mvpHiddenPages = new Set<DashboardPageId>([
+  'admin-user-org-search',
+  'admin-project-lifecycle',
+  'admin-dns-certificates',
+  'admin-runner-status',
+  'admin-failed-deployments',
+  'admin-audit-events',
+  'admin-abuse-actions',
+  'ai-assistant',
+  'environment-variables',
+  'agent-quickstart',
+]);
+
+const sidebarMainNav: Array<{ id: DashboardPageId; label: string }> = [
+  { id: 'project-list', label: 'Projects' },
+];
+
+const sidebarProjectNav: Array<{ id: DashboardPageId; label: string }> = [];
+
+const sidebarAdminNav: Array<{ id: DashboardPageId; label: string }> = [
+  { id: 'admin-user-org-search', label: 'Users & orgs' },
+  { id: 'admin-project-lifecycle', label: 'All projects' },
+  { id: 'admin-dns-certificates', label: 'DNS & certs' },
+  { id: 'admin-runner-status', label: 'Runners' },
+  { id: 'admin-failed-deployments', label: 'Failed deploys' },
+  { id: 'admin-audit-events', label: 'Audit log' },
+  { id: 'admin-abuse-actions', label: 'Abuse actions' },
+];
+
+function isProjectsArea(page: DashboardPageId): boolean {
+  return page === 'project-list' || page === 'create-project';
+}
+
+function navProject(state: DashboardState): Project | undefined {
+  if (isProjectsArea(state.currentPage)) {
+    return undefined;
+  }
+  return state.projects.find((project) => project.id === state.selectedProjectId);
+}
+
 export const dashboardSections: DashboardSection[] = [
   {
     id: 'projects',
@@ -366,19 +432,6 @@ export const dashboardSections: DashboardSection[] = [
 ];
 
 export const dashboardPages: DashboardPage[] = [
-  {
-    id: 'sign-in',
-    title: 'Sign in',
-    description: 'Start an authenticated dashboard session.',
-    requiresProject: false,
-  },
-  {
-    id: 'sign-up',
-    title: 'Sign up',
-    description: 'Create a divband account and first session.',
-    requiresProject: false,
-  },
-
   {
     id: 'agent-quickstart',
     title: 'Agent quickstart',
@@ -541,7 +594,7 @@ export class DivbandApiClient {
     this.token = token;
   }
 
-  register(input: { email: string; name: string; password: string }): Promise<AuthResponse> {
+  register(input: { email: string; name: string; username?: string; password: string }): Promise<AuthResponse> {
     return this.request<AuthResponse>('/auth/register', { method: 'POST', body: input, authenticated: false });
   }
 
@@ -605,6 +658,22 @@ export class DivbandApiClient {
     return response.project;
   }
 
+  async updateProject(projectId: string, input: { name?: string; slug?: string }): Promise<Project> {
+    const response = await this.request<{ project: Project }>(`/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', body: input });
+    return response.project;
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    await this.request(`/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+  }
+
+  async openWorkspace(projectId: string): Promise<{ url: string; hostname: string; namespace: string; applied: boolean; mode: 'local' | 'kubernetes' }> {
+    return this.request<{ url: string; hostname: string; namespace: string; applied: boolean; mode: 'local' | 'kubernetes' }>(
+      `/projects/${encodeURIComponent(projectId)}/workspace`,
+      { method: 'POST' },
+    );
+  }
+
   async getProject(projectId: string): Promise<Project> {
     const response = await this.request<{ project: Project }>(`/projects/${encodeURIComponent(projectId)}`);
     return response.project;
@@ -623,12 +692,40 @@ export class DivbandApiClient {
     return response.project;
   }
 
-  async startGitHubOAuth(returnTo: string, projectId?: string): Promise<string> {
+  async linkGitHubRepository(projectId: string, fullName: string): Promise<Project> {
+    const response = await this.request<{ project: Project }>(`/projects/${encodeURIComponent(projectId)}/github-repository`, {
+      method: 'POST',
+      body: { fullName },
+    });
+    return response.project;
+  }
+
+  async listGitHubRepositories(): Promise<GitHubRepositorySummary[]> {
+    const response = await this.request<{ repositories: GitHubRepositorySummary[] }>('/auth/github/repositories');
+    return response.repositories;
+  }
+
+  async startGitHubOAuth(returnTo: string, projectId?: string, publicOrigin?: string): Promise<string> {
     const response = await this.request<{ authorizationUrl: string }>('/auth/github/oauth/start', {
       method: 'POST',
-      body: { returnTo, projectId },
+      body: { returnTo, projectId, publicOrigin },
     });
     return response.authorizationUrl;
+  }
+
+  async getGitHubStatus(): Promise<GitHubConnectionStatus> {
+    return this.request<GitHubConnectionStatus>('/auth/github/status');
+  }
+
+  async linkGitHubIdentity(input: { username: string; accessToken: string; githubUserId?: string }): Promise<void> {
+    await this.request('/auth/github-identity', {
+      method: 'POST',
+      body: {
+        username: input.username,
+        accessToken: input.accessToken,
+        githubUserId: input.githubUserId ?? input.username,
+      },
+    });
   }
 
   async provisionNamespace(projectId: string): Promise<Project> {
@@ -796,6 +893,10 @@ export class DivbandApiClient {
     };
   }
 
+  async logout(): Promise<void> {
+    await this.request('/auth/logout', { method: 'POST' });
+  }
+
   private async request<T>(path: string, options: { method?: string; body?: unknown; authenticated?: boolean } = {}): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (options.body !== undefined) {
@@ -825,6 +926,7 @@ export function createInitialDashboardState(overrides: Partial<DashboardState> =
   return {
     currentPage: 'project-list',
     projects: [],
+    githubRepositories: [],
     repositoryFiles: [],
     logs: [],
     environmentVariables: [],
@@ -868,9 +970,14 @@ export class DashboardController {
 
   constructor(private readonly options: DashboardControllerOptions) {
     this.storage = options.storage ?? safeLocalStorage();
-    const storedToken = this.storage?.getItem('divband.dashboard.token') ?? undefined;
-    this.api = new DivbandApiClient({ baseUrl: options.baseUrl, token: options.token ?? storedToken, fetch: options.fetch });
-    this.state = createInitialDashboardState({ session: storedToken ? { id: 'stored-session', userId: 'stored-session', expiresAt: '' } : undefined, ...options.initialState });
+    const storedToken = options.token ?? getAuthToken();
+    const storedUser = getStoredAuthUser<AuthUser>();
+    this.api = new DivbandApiClient({ baseUrl: options.baseUrl, token: storedToken, fetch: options.fetch });
+    this.state = createInitialDashboardState({
+      session: storedToken ? { id: 'stored-session', userId: storedUser?.id ?? 'stored-session', expiresAt: '' } : undefined,
+      user: storedUser,
+      ...options.initialState,
+    });
     this.preferInitialRoute = Boolean(options.initialState?.selectedProjectId);
   }
 
@@ -878,10 +985,18 @@ export class DashboardController {
     this.options.root.addEventListener('submit', (event) => void this.handleSubmit(event));
     this.options.root.addEventListener('click', (event) => void this.handleClick(event));
     globalThis.addEventListener?.('hashchange', () => void this.navigateFromHash());
+    const notice = parseDashboardNotice(globalThis.location?.search);
+    if (notice) {
+      this.state = { ...this.state, notice: notice.message, noticeVariant: notice.variant };
+      clearDashboardNoticeQuery();
+    }
     await this.navigateFromHash();
   }
 
   async navigate(page: DashboardPageId, selectedProjectId = this.state.selectedProjectId): Promise<DashboardActionResult> {
+    if (isProjectsArea(page)) {
+      selectedProjectId = undefined;
+    }
     selectedProjectId ??= projectIdFromHash(globalThis.location?.hash);
     this.state = { ...this.state, currentPage: page, selectedProjectId, loading: true, error: undefined };
     this.render();
@@ -889,7 +1004,13 @@ export class DashboardController {
       await this.loadPageData(page, selectedProjectId);
       this.state = { ...this.state, loading: false };
     } catch (error) {
-      this.state = { ...this.state, loading: false, error: error instanceof Error ? error.message : 'Dashboard request failed.' };
+      const message = error instanceof Error ? error.message : 'Dashboard request failed.';
+      if (isAuthFailure(message)) {
+        clearAuthToken();
+        globalThis.location.replace('/');
+        return { state: this.state, html: this.render() };
+      }
+      this.state = { ...this.state, loading: false, error: message };
     }
     return { state: this.state, html: this.render() };
   }
@@ -909,12 +1030,8 @@ export class DashboardController {
   }
 
   private async loadPageData(page: DashboardPageId, selectedProjectId?: string): Promise<void> {
-    if (!this.state.session && page !== 'sign-in' && page !== 'sign-up') {
-      this.state = { ...this.state, currentPage: 'sign-in' };
-      return;
-    }
-
-    if (page === 'sign-in' || page === 'sign-up') {
+    if (!this.state.session && !getAuthToken()) {
+      globalThis.location.replace('/');
       return;
     }
 
@@ -968,8 +1085,20 @@ export class DashboardController {
     }
 
     const projects = upsertById(this.state.projects, project);
-    const statusSummary = await this.api.getProjectStatus(project.id);
-    const baseState = { ...this.state, projects, selectedProjectId: project.id, statusSummary };
+    const [statusSummary, githubStatus] = await Promise.all([
+      this.api.getProjectStatus(project.id),
+      this.api.getGitHubStatus(),
+    ]);
+    const repositoryReady = Boolean(statusSummary.repositoryUrl ?? project.repositoryUrl);
+    let githubRepositories: GitHubRepositorySummary[] = [];
+    if (githubStatus.connected && !repositoryReady && (page === 'project-overview' || page === 'gitlab-repository-status')) {
+      try {
+        githubRepositories = await this.api.listGitHubRepositories();
+      } catch {
+        githubRepositories = [];
+      }
+    }
+    const baseState = { ...this.state, projects, selectedProjectId: project.id, statusSummary, githubStatus, githubRepositories };
 
     if (page === 'environment-variables') {
       this.state = { ...baseState, environmentVariables: await this.api.listEnvironmentVariables(project.id) };
@@ -1001,17 +1130,18 @@ export class DashboardController {
     await this.runAction(async () => {
       const data = new FormData(form);
       switch (form.dataset.action) {
-        case 'sign-in':
-          await this.applyAuth(await this.api.login(requiredCredentials(data)));
-          return this.redirect('project-list');
-        case 'demo-owner-sign-in':
-          await this.applyAuth(await this.api.login({ email: 'demo.owner@divband.test', password: 'DemoPass123!' }));
-          return this.redirect('project-list');
-        case 'sign-up':
-          await this.applyAuth(await this.api.register({ ...requiredCredentials(data), name: String(data.get('name') ?? '') }));
-          return this.redirect('project-list');
         case 'create-project': {
           const project = await this.api.createProject({ name: String(data.get('name') ?? ''), slug: optionalString(data.get('slug')) });
+          this.state = { ...this.state, projects: upsertById(this.state.projects, project), selectedProjectId: project.id };
+          globalThis.location.assign(`/projects/${encodeURIComponent(project.id)}`);
+          return undefined;
+        }
+        case 'edit-project': {
+          const projectId = requiredProjectId(form);
+          const project = await this.api.updateProject(projectId, {
+            name: String(data.get('name') ?? ''),
+            slug: optionalString(data.get('slug')),
+          });
           this.state = { ...this.state, projects: upsertById(this.state.projects, project), selectedProjectId: project.id };
           return this.navigate('project-overview', project.id);
         }
@@ -1040,6 +1170,19 @@ export class DashboardController {
           this.state = { ...this.state, assistantMessages: [...this.state.assistantMessages, message] };
           return this.navigate('ai-assistant', requiredProjectId(form));
         }
+        case 'link-github-token': {
+          const projectId = requiredProjectId(form);
+          await this.api.linkGitHubIdentity({
+            username: String(data.get('username') ?? ''),
+            accessToken: String(data.get('accessToken') ?? ''),
+          });
+          this.state = {
+            ...this.state,
+            notice: 'GitHub token linked. Choose a repository or create a new one.',
+            noticeVariant: 'success',
+          };
+          return this.navigate('project-overview', projectId);
+        }
       }
       return undefined;
     });
@@ -1064,19 +1207,84 @@ export class DashboardController {
     }
     await this.runAction(async () => {
       switch (action) {
-        case 'provision-gitlab':
-          await this.api.provisionGitLabRepository(requiredProjectId(target));
-          return this.navigate('gitlab-repository-status', requiredProjectId(target));
+        case 'open-create-project':
+          return this.redirect('create-project');
+        case 'cancel-create-project':
+          return this.redirect('project-list');
+        case 'provision-gitlab': {
+          const projectId = requiredProjectId(target);
+          const project = await this.api.provisionGitLabRepository(projectId);
+          this.state = {
+            ...this.state,
+            projects: upsertById(this.state.projects, project),
+            selectedProjectId: projectId,
+            notice: project.repository?.offline
+              ? 'Offline repository created locally. GitHub API is unreachable from this server — repo links are placeholders until DNS/network is fixed.'
+              : 'GitHub repository linked successfully.',
+            noticeVariant: 'success',
+          };
+          return this.navigate('project-overview', projectId);
+        }
+        case 'link-github-repo': {
+          const projectId = requiredProjectId(target);
+          const fullName = requiredDataset(target, 'fullName');
+          const project = await this.api.linkGitHubRepository(projectId, fullName);
+          this.state = {
+            ...this.state,
+            projects: upsertById(this.state.projects, project),
+            selectedProjectId: projectId,
+            notice: `Linked GitHub repository ${fullName}.`,
+            noticeVariant: 'success',
+          };
+          return this.navigate('project-overview', projectId);
+        }
         case 'connect-github': {
           const projectId = requiredProjectId(target);
-          const authorizationUrl = await this.api.startGitHubOAuth(`/#gitlab-repository-status?projectId=${encodeURIComponent(projectId)}`, projectId);
+          const authorizationUrl = await this.api.startGitHubOAuth(
+            `/projects/${encodeURIComponent(projectId)}?notice=github_connected`,
+            projectId,
+            globalThis.location?.origin,
+          );
           globalThis.location.assign(authorizationUrl);
           this.state = { ...this.state, selectedProjectId: projectId };
           return undefined;
         }
+        case 'sign-out':
+          try {
+            await this.api.logout();
+          } catch {
+            // Clear local session even if logout request fails.
+          }
+          clearAuthToken();
+          globalThis.location.assign('/');
+          return undefined;
         case 'provision-namespace':
           await this.api.provisionNamespace(requiredProjectId(target));
           return this.navigate('project-overview', requiredProjectId(target));
+        case 'open-workspace': {
+          const projectId = requiredProjectId(target);
+          const workspace = await this.api.openWorkspace(projectId);
+          globalThis.open?.(workspace.url, '_blank', 'noopener,noreferrer');
+          this.state = { ...this.state, selectedProjectId: projectId };
+          return this.navigate('project-overview', projectId);
+        }
+        case 'delete-project': {
+          const projectId = requiredProjectId(target);
+          const project = this.state.projects.find((item) => item.id === projectId) ?? selectProject(this.state);
+          const label = project?.name ?? 'this project';
+          if (!globalThis.confirm(`Delete "${label}"? This removes Kubernetes resources, the GitHub repository, domains, secrets, and deployments.`)) {
+            return undefined;
+          }
+          await this.api.deleteProject(projectId);
+          this.state = {
+            ...this.state,
+            projects: this.state.projects.filter((item) => item.id !== projectId),
+            selectedProjectId: undefined,
+            statusSummary: undefined,
+          };
+          globalThis.history?.replaceState?.(null, '', '/dashboard');
+          return this.navigate('project-list');
+        }
         case 'attach-platform-subdomain':
           await this.api.attachPlatformSubdomain(requiredProjectId(target));
           return this.navigate('domain-management', requiredProjectId(target));
@@ -1105,12 +1313,17 @@ export class DashboardController {
 
   private async applyAuth(response: AuthResponse): Promise<void> {
     this.api.setToken(response.token);
-    this.storage?.setItem('divband.dashboard.token', response.token);
+    setAuthSession(response.token, response.user);
     this.state = { ...this.state, user: response.user, session: response.session };
   }
 
   private redirect(page: DashboardPageId, selectedProjectId = this.state.selectedProjectId): Promise<DashboardActionResult> {
-    globalThis.history?.replaceState?.(null, '', `#${page}`);
+    const hash = page === 'project-list'
+      ? ''
+      : selectedProjectId
+        ? `#${page}?projectId=${encodeURIComponent(selectedProjectId)}`
+        : `#${page}`;
+    globalThis.history?.replaceState?.(null, '', `/dashboard${hash}`);
     return this.navigate(page, selectedProjectId);
   }
 
@@ -1134,18 +1347,20 @@ export function mountDashboard(options: DashboardControllerOptions): DashboardCo
 
 export function renderDashboard(state: DashboardState): string {
   const selectedProject = selectProject(state);
+  const sidebarProject = navProject(state);
   return `
     <main class="dashboard-shell">
       <aside class="dashboard-sidebar">
-        <h1>divband</h1>
-        <p>Multi-tenant hosting dashboard</p>
-        ${renderNavigation(state, selectedProject)}
-        <section class="lifecycle-legend">
-          <h2>Lifecycle states</h2>
-          ${renderLifecycleLegend()}
-        </section>
+        <div class="brand-lockup">
+          <p class="eyebrow">divband</p>
+          <h1>Ship projects fast</h1>
+          <p class="brand-tagline">GitHub, Kubernetes, and live URLs on <strong>${escapeHtml(state.user?.username ? `${state.user.username}.divband.com` : 'yourname.divband.com')}</strong></p>
+        </div>
+        ${state.user ? `<div class="user-chip"><span>Signed in as</span><strong>@${escapeHtml(state.user.username || state.user.name)}</strong><button type="button" class="button-secondary" data-action="sign-out">Sign out</button></div>` : ''}
+        ${renderNavigation(state, sidebarProject)}
       </aside>
       <section class="dashboard-content">
+        ${state.notice ? `<div class="alert ${state.noticeVariant === 'error' ? 'alert-error' : 'alert-success'}">${escapeHtml(state.notice)}</div>` : ''}
         ${state.error ? `<div class="alert alert-error">${escapeHtml(state.error)}</div>` : ''}
         ${state.loading ? '<div class="alert">Loading latest backend API data…</div>' : ''}
         ${renderCurrentPage(state, selectedProject)}
@@ -1154,31 +1369,53 @@ export function renderDashboard(state: DashboardState): string {
 }
 
 function renderNavigation(state: DashboardState, selectedProject?: Project): string {
-  const items = dashboardPages
-    .filter((page) => !page.requiresProject || selectedProject)
-    .map((page) => `<a class="${state.currentPage === page.id ? 'active' : ''}" href="${escapeHtml(pageHref(page.id, selectedProject?.id))}">${escapeHtml(page.title)}</a>`)
-    .join('');
-  return `<nav>${items}</nav>`;
+  const isPlatformAdmin = Boolean(state.user?.platformAdminRole);
+  const mainNav = sidebarMainNav.map((item) => {
+    const active = isProjectsArea(state.currentPage) && item.id === 'project-list';
+    return `<a class="${active ? 'active' : ''}" href="${escapeHtml(pageHref('project-list'))}">${escapeHtml(item.label)}</a>`;
+  }).join('');
+
+  const projectNav = selectedProject && sidebarProjectNav.length
+    ? `
+      <div class="nav-group">
+        <p class="nav-group-label">${escapeHtml(selectedProject.name)}</p>
+        ${sidebarProjectNav.map((item) => {
+          const active = state.currentPage === item.id;
+          return `<a class="${active ? 'active' : ''}" href="${escapeHtml(pageHref(item.id, selectedProject.id))}">${escapeHtml(item.label)}</a>`;
+        }).join('')}
+      </div>`
+    : selectedProject
+      ? `<div class="nav-group"><p class="nav-group-label">${escapeHtml(selectedProject.name)}</p></div>`
+      : '';
+
+  const adminNav = isPlatformAdmin
+    ? `
+      <div class="nav-group nav-group-admin">
+        <p class="nav-group-label">Admin</p>
+        ${sidebarAdminNav.map((item) => {
+          const active = state.currentPage === item.id;
+          return `<a class="${active ? 'active' : ''}" href="${escapeHtml(pageHref(item.id))}">${escapeHtml(item.label)}</a>`;
+        }).join('')}
+      </div>`
+    : '';
+
+  return `<nav>${mainNav}${projectNav}${adminNav}</nav>`;
 }
 
 function renderCurrentPage(state: DashboardState, selectedProject?: Project): string {
   switch (state.currentPage) {
-    case 'sign-in':
-      return renderSignInPage();
-    case 'sign-up':
-      return renderSignUpPage();
     case 'create-project':
-      return renderCreateProjectPage();
+    case 'project-list':
+      return renderProjectsPage(state.projects, state.user?.username, state.currentPage === 'create-project');
     case 'agent-quickstart':
       return renderAgentQuickstartPage();
     case 'project-overview':
-      return renderProjectOverviewPage(selectedProject, state.statusSummary, state.repositoryFiles);
     case 'gitlab-repository-status':
-      return renderGitLabStatusPage(selectedProject, state.repositoryFiles);
+      return renderProjectOverviewPage(selectedProject, state.statusSummary, state.githubStatus, state.githubRepositories);
     case 'deployment-status':
-      return renderDeploymentStatusPage(selectedProject, state.statusSummary?.latestDeployment);
+      return renderDeploymentStatusPage(selectedProject, state.statusSummary, state.githubStatus);
     case 'domain-management':
-      return renderDomainManagementPage(selectedProject);
+      return renderDomainManagementPage(selectedProject, state.statusSummary);
     case 'environment-variables':
       return renderEnvironmentVariablesPage(selectedProject, state.environmentVariables);
     case 'logs-build-history':
@@ -1199,9 +1436,8 @@ function renderCurrentPage(state: DashboardState, selectedProject?: Project): st
       return renderAdminAuditEventsPage(state.adminAuditEvents);
     case 'admin-abuse-actions':
       return renderAdminAbuseActionsPage(state.adminAbuseActions);
-    case 'project-list':
     default:
-      return renderProjectListPage(state.projects, selectedProject?.id);
+      return renderProjectsPage(state.projects, state.user?.username, false);
   }
 }
 
@@ -1273,176 +1509,522 @@ function renderAgentQuickstartPage(): string {
     </article>`;
 }
 
-function renderSignInPage(): string {
+function renderProjectsPage(projects: Project[], username?: string, showCreateForm = false): string {
+  const hostExample = username ? `${'{slug}'}.${username}.divband.com` : '{slug}.{username}.divband.com';
+  const createPanel = showCreateForm
+    ? `
+      <article class="card">
+        <header class="page-header">
+          <div>
+            <h2>New project</h2>
+            <p>Your project will live at <code>${escapeHtml(hostExample)}</code> in namespace <code>user-${escapeHtml(username ?? '{username}')}</code>.</p>
+          </div>
+          <button type="button" class="button-secondary" data-action="cancel-create-project">Cancel</button>
+        </header>
+        <form data-action="create-project">
+          <label>Project name <input name="name" placeholder="Marketing site" required></label>
+          <label>Slug <input name="slug" placeholder="marketing-site"><span class="muted">Used in the URL and GitHub repo name.</span></label>
+          <button type="submit">Create project</button>
+        </form>
+      </article>`
+    : '';
+
+  const header = `
+    <header class="page-header">
+      <div>
+        <h2>Projects</h2>
+        <p>Pick a project to connect GitHub and choose a repository${username ? ` under <strong>*.${escapeHtml(username)}.divband.com</strong>` : ''}.</p>
+      </div>
+      ${showCreateForm ? '' : '<button type="button" data-action="open-create-project">New project</button>'}
+    </header>`;
+
+  if (projects.length) {
+    const cards = projects.map((project) => `
+      <a class="project-card project-card-link" href="${escapeHtml(pageHref('project-overview', project.id))}">
+        <div class="project-card-head">
+          <div>
+            <h3>${escapeHtml(project.name)}</h3>
+            <p class="muted">${escapeHtml(project.platformHostname)}</p>
+          </div>
+          <span class="status status-${escapeHtml(getProjectLifecycleState(project.status))}">${escapeHtml(getLifecycleLabel(project.status))}</span>
+        </div>
+        ${project.repositoryUrl ? `<p class="muted project-card-repo">${escapeHtml(project.repository?.path ?? project.repositoryUrl)}</p>` : '<p class="muted">GitHub not connected yet</p>'}
+      </a>`).join('');
+
+    return `
+      ${createPanel}
+      <article class="card">
+        ${header}
+        <div class="project-grid">${cards}</div>
+      </article>`;
+  }
+
   return `
-    <article class="card">
-      <h2>Sign in</h2>
-      <form data-action="sign-in">
-        <label>Email <input name="email" type="email" autocomplete="email" required></label>
-        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-        <button type="submit">Sign in</button>
-      </form>
-      <form data-action="demo-owner-sign-in">
-        <button type="submit">Demo owner</button>
-      </form>
+    ${createPanel}
+    <article class="card hero-card">
+      ${header}
+      <p class="muted">You do not have any projects yet. Create one to connect GitHub, provision Kubernetes, and get a live URL like <code>my-app.${escapeHtml(username ?? 'you')}.divband.com</code>.</p>
     </article>`;
 }
 
-function renderSignUpPage(): string {
+function renderProjectListPage(projects: Project[], selectedProjectId?: string, username?: string): string {
+  return renderProjectsPage(projects, username, false);
+}
+
+function renderCreateProjectPage(username?: string): string {
+  return renderProjectsPage([], username, true);
+}
+
+function isLocalDashboard(): boolean {
+  const host = globalThis.location?.hostname ?? '';
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
+
+function projectDeployment(project: Project, summary?: ProjectStatusSummary): Deployment | undefined {
+  return summary?.latestDeployment ?? project.deployments.at(-1);
+}
+
+function projectLiveUrlState(project: Project, summary?: ProjectStatusSummary): {
+  hostname: string;
+  canOpen: boolean;
+  statusLabel: string;
+  statusDetail: string;
+  statusClass: string;
+} {
+  const hostname = project.platformHostname;
+  const deployment = projectDeployment(project, summary);
+  const repositoryReady = Boolean(summary?.repositoryUrl ?? project.repositoryUrl);
+  const namespaceReady = summary?.namespaceProvisioned ?? project.namespaceProvisioned;
+  const subdomainAttached = summary?.platformSubdomainAttached ?? project.platformSubdomainAttached;
+  const deployed = deployment?.state === 'succeeded'
+    || summary?.status === 'deployed'
+    || summary?.status === 'domain_active';
+
+  if (deployed && subdomainAttached && !isLocalDashboard()) {
+    return {
+      hostname,
+      canOpen: true,
+      statusLabel: 'Live',
+      statusDetail: 'Your site is published at this URL.',
+      statusClass: 'status-deployed',
+    };
+  }
+
+  if (deployed && subdomainAttached && isLocalDashboard()) {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'Deployed locally',
+      statusDetail: 'Deployment succeeded in local dev, but this divband.com URL only works in production once DNS and Kubernetes are configured.',
+      statusClass: 'status-building',
+    };
+  }
+
+  if (deployment && deployment.state !== 'succeeded' && deployment.state !== 'failed') {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'Deploying',
+      statusDetail: 'Your latest deployment is still running.',
+      statusClass: 'status-building',
+    };
+  }
+
+  if (!repositoryReady) {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'Not set up yet',
+      statusDetail: 'Connect GitHub and push your first deployment to make this URL live.',
+      statusClass: 'status-created',
+    };
+  }
+
+  if (!namespaceReady) {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'Waiting on infrastructure',
+      statusDetail: 'Provision Kubernetes for this project, then deploy to publish your site.',
+      statusClass: 'status-created',
+    };
+  }
+
+  if (!deployment || deployment.state === 'failed') {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'Not published',
+      statusDetail: 'Trigger a deployment from the Deployments tab to publish your site to this URL.',
+      statusClass: 'status-created',
+    };
+  }
+
+  if (!subdomainAttached) {
+    return {
+      hostname,
+      canOpen: false,
+      statusLabel: 'DNS not attached',
+      statusDetail: 'Attach the platform subdomain from the Domains tab after your first deployment.',
+      statusClass: 'status-created',
+    };
+  }
+
+  return {
+    hostname,
+    canOpen: false,
+    statusLabel: 'Not live yet',
+    statusDetail: 'Finish deploying your project to publish content to this URL.',
+    statusClass: 'status-created',
+  };
+}
+
+function projectPipelineReadiness(project: Project, summary?: ProjectStatusSummary, githubStatus?: GitHubConnectionStatus) {
+  const githubConnected = Boolean(githubStatus?.connected);
+  const repositoryReady = Boolean(summary?.repositoryUrl ?? project.repositoryUrl);
+  const namespaceReady = summary?.namespaceProvisioned ?? project.namespaceProvisioned;
+  const deployment = projectDeployment(project, summary);
+  const deploymentReady = deployment?.state === 'succeeded';
+  return { githubConnected, repositoryReady, namespaceReady, deploymentReady, deployment };
+}
+
+function renderGitHubSetupDiagnostics(githubStatus?: GitHubConnectionStatus): string {
+  if (!githubStatus?.configured) {
+    return `
+      <div class="github-setup-diagnostics">
+        <p class="muted">GitHub OAuth is not configured. Copy <code>apps/frontend/.env.local.example</code> to <code>apps/frontend/.env.local</code> and add your OAuth app credentials.</p>
+      </div>`;
+  }
+
+  const credentialLine = githubStatus.usingCustomCredentials
+    ? `Using your OAuth app (<code>${escapeHtml(githubStatus.clientIdPreview ?? 'custom')}</code>).`
+    : `Using the bundled local OAuth app (<code>${escapeHtml(githubStatus.clientIdPreview ?? 'bundled')}</code>). Add your own app via <code>apps/frontend/.env.local</code>.`;
+
+  const networkLine = githubStatus.serverReachable === false
+    ? '<p class="local-dev-note">This server cannot reach GitHub right now (DNS/network). OAuth authorize works in the browser, but completing the connection requires the server to call GitHub. Fix DNS or use a GitHub personal access token below.</p>'
+    : '<p class="muted">Server can reach GitHub.</p>';
+
   return `
-    <article class="card">
-      <h2>Sign up</h2>
-      <form data-action="sign-up">
-        <label>Name <input name="name" autocomplete="name" required></label>
-        <label>Email <input name="email" type="email" autocomplete="email" required></label>
-        <label>Password <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
-        <button type="submit">Create account</button>
-      </form>
+    <div class="github-setup-diagnostics">
+      <p class="muted">${credentialLine}</p>
+      <p class="muted">Callback URL registered in GitHub must match: <code>${escapeHtml(githubStatus.callbackUrl ?? 'http://localhost:3000/api/auth/callback/github')}</code></p>
+      ${networkLine}
+    </div>`;
+}
+
+function renderGitHubRepositoryPicker(project: Project, repositories: GitHubRepositorySummary[]): string {
+  if (!repositories.length) {
+    return `
+      <section class="github-repo-picker">
+        <h4>Your GitHub repositories</h4>
+        <p class="muted">No repositories were returned from GitHub. Create a new repository for this project below.</p>
+      </section>`;
+  }
+
+  const rows = repositories.map((repo) => `
+    <li class="github-repo-option">
+      <div>
+        <strong>${escapeHtml(repo.fullName)}</strong>
+        <p class="muted">${repo.private ? 'Private' : 'Public'} · ${escapeHtml(repo.defaultBranch)}</p>
+      </div>
+      <div class="github-repo-option-actions">
+        <a class="button-secondary" href="${escapeHtml(repo.webUrl)}" target="_blank" rel="noreferrer">View</a>
+        <button type="button" data-action="link-github-repo" data-project-id="${escapeHtml(project.id)}" data-full-name="${escapeHtml(repo.fullName)}">Use this repo</button>
+      </div>
+    </li>`).join('');
+
+  return `
+    <section class="github-repo-picker">
+      <h4>Your GitHub repositories</h4>
+      <p class="muted">Choose an existing repository for <strong>${escapeHtml(project.name)}</strong>, or create a new one below.</p>
+      <ul class="github-repo-list">${rows}</ul>
+    </section>`;
+}
+
+function renderGitHubConnectPanel(
+  project: Project,
+  summary?: ProjectStatusSummary,
+  githubStatus?: GitHubConnectionStatus,
+  githubRepositories: GitHubRepositorySummary[] = [],
+): string {
+  const { githubConnected, repositoryReady } = projectPipelineReadiness(project, summary, githubStatus);
+  const githubUsername = githubStatus?.username;
+  const diagnostics = renderGitHubSetupDiagnostics(githubStatus);
+
+  if (!githubStatus?.configured) {
+    return `
+      <article class="card github-connect-card">
+        <h3>GitHub is not configured</h3>
+        ${diagnostics}
+      </article>`;
+  }
+
+  if (repositoryReady && project.repositoryUrl) {
+    const repository = project.repository;
+    const offlineNote = repository?.offline
+      ? '<p class="local-dev-note">This is an offline placeholder repository. It was not created on GitHub because this server cannot reach the GitHub API.</p>'
+      : '';
+    return `
+      <article class="card github-connect-card github-connect-card-success">
+        <div class="github-connect-header">
+          <div class="github-mark" aria-hidden="true">${githubMarkSvg()}</div>
+          <div>
+            <p class="eyebrow">${repository?.offline ? 'Offline repository ready' : 'GitHub connected'}</p>
+            <h3>Repository ready</h3>
+            <p class="muted">${repository?.offline ? `Local repo record for @${escapeHtml(githubUsername ?? 'github-user')}.` : `Code for this project lives in a private GitHub repo under ${githubUsername ? `@${escapeHtml(githubUsername)}` : 'your account'}.`}</p>
+          </div>
+        </div>
+        ${offlineNote}
+        <div class="github-repo-summary">
+          <a class="github-repo-link" href="${escapeHtml(project.repositoryUrl)}" target="_blank" rel="noreferrer">${escapeHtml(repository?.path ?? project.repositoryUrl)}</a>
+          ${repository?.cloneUrl && !repository.offline ? `<button type="button" class="button-secondary" data-action="copy-to-clipboard" data-copy-value="${escapeHtml(repository.cloneUrl)}">Copy clone URL</button>` : ''}
+        </div>
+        <p class="muted github-safe-note">${repository?.offline ? 'Fix server DNS/network to create the real GitHub repo later.' : `Divband only uses this repo for deployments and CI for <strong>${escapeHtml(project.name)}</strong>.`}</p>
+        <button type="button" data-action="open-workspace" data-project-id="${escapeHtml(project.id)}">Open VS Code</button>
+      </article>`;
+  }
+
+  if (githubConnected) {
+    const offlineHint = githubStatus?.serverReachable === false
+      ? '<p class="local-dev-note">GitHub API is unreachable from this server. You can still create a local offline repository record to continue testing.</p>'
+      : '';
+    const createButtonLabel = githubStatus?.serverReachable === false ? 'Create offline repository' : 'Create new repository';
+    return `
+      <article class="card github-connect-card">
+        <div class="github-connect-header">
+          <div class="github-mark" aria-hidden="true">${githubMarkSvg()}</div>
+          <div>
+            <p class="eyebrow">GitHub account linked</p>
+            <h3>@${escapeHtml(githubUsername ?? 'github-user')}</h3>
+            <p class="muted">Select one of your GitHub repositories or create a new private repo for this project.</p>
+          </div>
+        </div>
+        ${renderGitHubRepositoryPicker(project, githubRepositories)}
+        ${offlineHint}
+        <div class="github-create-repo">
+          <button type="button" data-action="provision-gitlab" data-project-id="${escapeHtml(project.id)}">${createButtonLabel}</button>
+        </div>
+      </article>`;
+  }
+
+  return `
+    <article class="card github-connect-card">
+      ${diagnostics}
+      <div class="github-connect-header">
+        <div class="github-mark" aria-hidden="true">${githubMarkSvg()}</div>
+        <div>
+          <p class="eyebrow">Step 1</p>
+          <h3>Connect GitHub</h3>
+          <p class="muted">Authorize Divband to create and manage one private repo for <strong>${escapeHtml(project.name)}</strong>. This unlocks provisioning, deployments, and your live URL.</p>
+        </div>
+      </div>
+      <ul class="github-permissions">
+        <li>Read your GitHub profile (<code>read:user</code>)</li>
+        <li>Create and update the project repository (<code>repo</code>)</li>
+        <li>No access to your other repositories unless you connect them separately</li>
+      </ul>
+      <button type="button" data-action="connect-github" data-project-id="${escapeHtml(project.id)}" ${githubStatus.serverReachable === false ? 'disabled title="Server cannot reach GitHub — fix DNS/network or use a token below"' : ''}>Connect GitHub account</button>
+      <details class="github-token-fallback">
+        <summary>Or link a GitHub personal access token</summary>
+        <form data-action="link-github-token" data-project-id="${escapeHtml(project.id)}">
+          <label>GitHub username <input name="username" placeholder="your-login" required></label>
+          <label>Personal access token <input name="accessToken" type="password" placeholder="github_pat_..." required autocomplete="off"></label>
+          <button type="submit">Link token</button>
+        </form>
+        <p class="muted">Create a classic token with <code>repo</code> scope at GitHub → Settings → Developer settings → Personal access tokens.</p>
+      </details>
+      <p class="muted github-safe-note">You will be redirected to GitHub to approve access, then returned here automatically.</p>
     </article>`;
 }
 
-function renderProjectListPage(projects: Project[], selectedProjectId?: string): string {
-  const rows = projects.length
-    ? projects.map((project) => `
-      <tr class="${project.id === selectedProjectId ? 'selected' : ''}">
-        <td><a href="/projects/${encodeURIComponent(project.id)}" data-project-id="${escapeHtml(project.id)}">${escapeHtml(project.name)}</a></td>
-        <td>${escapeHtml(project.slug)}</td>
-        <td><span class="status status-${escapeHtml(getProjectLifecycleState(project.status))}">${escapeHtml(getLifecycleLabel(project.status))}</span></td>
-        <td>${escapeHtml(project.updatedAt)}</td>
-      </tr>`).join('')
-    : '<tr><td colspan="4">No projects yet. Create your first project to begin provisioning.</td></tr>';
+function renderProjectPipelineActions(project: Project, summary?: ProjectStatusSummary, githubStatus?: GitHubConnectionStatus): string {
+  const { githubConnected, repositoryReady, namespaceReady, deploymentReady } = projectPipelineReadiness(project, summary, githubStatus);
+
+  return `
+    <section class="pipeline-actions">
+      <h3>Next steps</h3>
+      <div class="pipeline-action-grid">
+        <div class="pipeline-action ${namespaceReady ? 'done' : ''}">
+          <strong>Provision infrastructure</strong>
+          <p class="muted">${namespaceReady ? 'Kubernetes namespace is ready.' : 'Creates the isolated namespace for this project.'}</p>
+          <button type="button" data-action="provision-namespace" data-project-id="${escapeHtml(project.id)}" ${repositoryReady ? '' : 'disabled title="Connect GitHub and create a repository first"'}>${namespaceReady ? 'Re-provision namespace' : 'Provision namespace'}</button>
+        </div>
+        <div class="pipeline-action ${deploymentReady ? 'done' : ''}">
+          <strong>Deploy</strong>
+          <p class="muted">${deploymentReady ? 'Latest deployment succeeded.' : 'Build and publish your site from GitHub.'}</p>
+          ${namespaceReady && repositoryReady
+            ? `<a class="button" href="${escapeHtml(pageHref('deployment-status', project.id))}">Open deployments</a>`
+            : '<span class="button button-disabled" title="Connect GitHub, create a repo, and provision infrastructure first">Open deployments</span>'}
+        </div>
+        <div class="pipeline-action">
+          <strong>Go live</strong>
+          <p class="muted">${deploymentReady ? 'Attach DNS after a successful deployment.' : 'Available after your first successful deployment.'}</p>
+          ${deploymentReady
+            ? `<a class="button button-secondary" href="${escapeHtml(pageHref('domain-management', project.id))}">Manage domains</a>`
+            : '<span class="button button-secondary button-disabled" title="Deploy successfully before attaching your live URL">Manage domains</span>'}
+        </div>
+      </div>
+      ${!githubConnected ? '<p class="muted pipeline-hint">Connect GitHub above before provisioning or deploying.</p>' : ''}
+      ${githubConnected && !repositoryReady ? '<p class="muted pipeline-hint">Create the project repository before provisioning infrastructure.</p>' : ''}
+    </section>`;
+}
+
+function githubMarkSvg(): string {
+  return '<svg viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.436-5.787-16.436-5.787-2.22-5.623-5.418-7.112-5.418-7.112-4.404-3.01.334-2.952.334-2.952 4.872.322 7.436 5.012 7.436 5.012 4.331 7.425 11.364 5.282 14.125 4.039.436-3.138 1.699-5.282 3.093-6.497-10.839-1.225-22.243-5.414-22.243-24.106 0-5.326 1.903-9.678 5.008-13.095-.502-1.225-2.173-6.16 0.477-12.85 0 0 4.086-1.303 13.386 4.992 3.878-1.078 8.037-1.617 12.172-1.636 4.135.019 8.296.558 12.183 1.636 9.298-6.295 13.382-4.992 13.382-4.992 2.652 6.69 0.981 11.625 0.479 12.85 3.107 3.417 5.006 7.769 5.006 13.095 0 18.718-11.423 22.875-22.286 24.085 1.753 1.512 3.315 4.481 3.315 9.605 0 6.935-.063 12.517-.063 14.229 0 1.385 1.011 2.848 3.317 2.365 19.396-6.528 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>';
+}
+
+function renderProjectSetupSteps(project: Project, summary?: ProjectStatusSummary, githubStatus?: GitHubConnectionStatus): string {
+  const { githubConnected, repositoryReady, namespaceReady, deploymentReady } = projectPipelineReadiness(project, summary, githubStatus);
+  const liveReady = projectLiveUrlState(project, summary).canOpen;
+
+  const steps = [
+    {
+      label: 'Connect GitHub',
+      detail: repositoryReady
+        ? 'Repository connected.'
+        : githubConnected
+          ? 'GitHub linked — create the project repository next.'
+          : 'Link your GitHub account to start.',
+      done: repositoryReady,
+    },
+    {
+      label: 'Provision infrastructure',
+      detail: namespaceReady ? 'Kubernetes namespace is ready.' : 'Create the namespace for this project.',
+      done: namespaceReady,
+    },
+    {
+      label: 'Deploy your site',
+      detail: deploymentReady ? 'Latest deployment succeeded.' : 'Run your first deployment from GitHub.',
+      done: deploymentReady,
+    },
+    {
+      label: 'Go live',
+      detail: liveReady ? 'Your site is reachable at the live URL.' : 'Attach DNS after a successful deployment.',
+      done: liveReady,
+    },
+  ];
+
+  return `
+    <section class="setup-steps">
+      <h3>Getting started</h3>
+      <ol class="setup-step-list">
+        ${steps.map((step) => `
+          <li class="setup-step ${step.done ? 'done' : ''}">
+            <span class="setup-step-marker" aria-hidden="true">${step.done ? '✓' : '○'}</span>
+            <div>
+              <strong>${escapeHtml(step.label)}</strong>
+              <p class="muted">${escapeHtml(step.detail)}</p>
+            </div>
+          </li>`).join('')}
+      </ol>
+    </section>`;
+}
+
+function renderProjectOverviewPage(
+  project?: Project,
+  summary?: ProjectStatusSummary,
+  githubStatus?: GitHubConnectionStatus,
+  githubRepositories: GitHubRepositorySummary[] = [],
+): string {
+  if (!project) {
+    return renderEmptyProjectNotice();
+  }
+
+  const { repositoryReady } = projectPipelineReadiness(project, summary, githubStatus);
 
   return `
     <article class="card">
       <header class="page-header">
         <div>
-          <h2>Project list</h2>
-          <p>Loaded from <code>GET /projects</code>.</p>
+          <h2>${escapeHtml(project.name)}</h2>
+          <p class="muted">${escapeHtml(project.platformHostname)}</p>
         </div>
-        <a class="button" href="#create-project">Create project</a>
+        <div class="quick-actions">
+          ${repositoryReady ? `<button type="button" data-action="open-workspace" data-project-id="${escapeHtml(project.id)}">Open VS Code</button>` : ''}
+        </div>
       </header>
-      <table>
-        <thead><tr><th>Name</th><th>Slug</th><th>Lifecycle</th><th>Updated</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </article>`;
+    </article>
+    ${renderGitHubConnectPanel(project, summary, githubStatus, githubRepositories)}`;
 }
 
-function renderCreateProjectPage(): string {
-  return `
-    <article class="card">
-      <h2>Create project</h2>
-      <p>Submits to <code>POST /projects</code> and starts the Created lifecycle state.</p>
-      <form data-action="create-project">
-        <label>Project name <input name="name" placeholder="Marketing site" required></label>
-        <label>Slug <input name="slug" placeholder="marketing-site"></label>
-        <button type="submit">Create project</button>
-      </form>
-    </article>`;
-}
-
-function renderProjectOverviewPage(project?: Project, summary?: ProjectStatusSummary, repositoryFiles: RepositoryFile[] = []): string {
+function renderGitLabStatusPage(
+  project?: Project,
+  summary?: ProjectStatusSummary,
+  githubStatus?: GitHubConnectionStatus,
+  repositoryFiles: RepositoryFile[] = [],
+): string {
   if (!project) {
     return renderEmptyProjectNotice();
   }
 
   return `
-    <article class="card">
-      <h2>${escapeHtml(project.name)}</h2>
-      ${renderLifecycleStepper(getProjectLifecycleState(summary?.status ?? project.status))}
-      <dl class="metadata-grid">
-        <div><dt>Repository path</dt><dd>${escapeHtml(project.gitlabPath)}</dd></div>
-        <div><dt>Namespace</dt><dd>${escapeHtml(project.namespace)}</dd></div>
-        <div><dt>Platform hostname</dt><dd>${escapeHtml(project.platformHostname)}</dd></div>
-        <div><dt>Runner tag</dt><dd>${escapeHtml(project.runnerTag)}</dd></div>
-        <div><dt>Active domains</dt><dd>${escapeHtml((summary?.activeDomains ?? project.domains.filter((domain) => domain.verified).map((domain) => domain.hostname)).join(', ') || 'None')}</dd></div>
-        <div><dt>Certificates</dt><dd>${escapeHtml((summary?.domains ?? project.domains).map((domain) => `${domain.hostname}: ${domain.certificateStatus}${domain.failureReason ? ` (${domain.failureReason})` : ''}`).join(', ') || 'None')}</dd></div>
-        <div><dt>Latest deployment</dt><dd>${escapeHtml(summary?.latestDeployment?.state ?? project.deployments.at(-1)?.state ?? 'None')}</dd></div>
-      </dl>
-      ${renderRepositoryPanel(project, repositoryFiles)}
-      <div class="quick-actions">
-        <button data-action="provision-gitlab" data-project-id="${escapeHtml(project.id)}">Provision repository</button>
-        <button data-action="provision-namespace" data-project-id="${escapeHtml(project.id)}">Provision namespace</button>
-        <a class="button" href="${escapeHtml(pageHref('deployment-status', project.id))}">Open deployments</a>
-      </div>
-    </article>`;
-}
-
-function renderGitLabStatusPage(project?: Project, repositoryFiles: RepositoryFile[] = []): string {
-  if (!project) {
-    return renderEmptyProjectNotice();
-  }
-
-  return `
-    <article class="card">
-      <h2>GitHub repository status</h2>
-      <p>${project.repositoryUrl ? `Repository available at <a href="${escapeHtml(project.repositoryUrl)}">${escapeHtml(project.repositoryUrl)}</a>.` : 'Repository has not been provisioned yet.'}</p>
-      <dl class="metadata-grid">
-        <div><dt>Repository state</dt><dd>${project.repositoryUrl ? 'Repository provisioned' : 'Waiting for provisioning'}</dd></div>
-        <div><dt>Project path</dt><dd>${escapeHtml(project.repository?.path ?? project.gitlabPath)}</dd></div>
-        <div><dt>Default branch</dt><dd>${escapeHtml(project.repository?.defaultBranch ?? 'unknown')}</dd></div>
-        <div><dt>Runner tag</dt><dd>${escapeHtml(project.runnerTag)}</dd></div>
-      </dl>
-      ${renderRepositoryPanel(project, repositoryFiles)}
-      <button data-action="connect-github" data-project-id="${escapeHtml(project.id)}">Connect GitHub</button>
-      <button data-action="provision-gitlab" data-project-id="${escapeHtml(project.id)}">Provision or reconcile repository</button>
-    </article>`;
+    ${renderGitHubConnectPanel(project, summary, githubStatus)}
+    ${project.repositoryUrl ? renderRepositoryPanel(project, repositoryFiles) : ''}
+    ${renderProjectPipelineActions(project, summary, githubStatus)}`;
 }
 
 function renderRepositoryPanel(project: Project, files: RepositoryFile[]): string {
   if (!project.repositoryUrl) {
-    return '<section><h3>Repository</h3><p>No repository is connected yet.</p></section>';
+    return '';
   }
 
   const repository = project.repository;
   const rows = files.length
     ? files.map((file) => `<tr><td>${file.type === 'dir' ? 'dir' : 'file'}</td><td><a href="${escapeHtml(file.webUrl)}">${escapeHtml(file.path || file.name)}</a></td><td>${escapeHtml(file.size === undefined ? '' : `${file.size} bytes`)}</td></tr>`).join('')
-    : '<tr><td colspan="3">No repository contents loaded.</td></tr>';
+    : '<tr><td colspan="3">No repository contents loaded yet.</td></tr>';
 
   return `
-    <section>
-      <h3>Repository</h3>
-      <dl class="metadata-grid">
-        <div><dt>Provider</dt><dd>${escapeHtml(repository?.provider ?? 'github')}</dd></div>
-        <div><dt>Path</dt><dd>${escapeHtml(repository?.path ?? project.gitlabPath)}</dd></div>
-        <div><dt>URL</dt><dd><a href="${escapeHtml(project.repositoryUrl)}">${escapeHtml(project.repositoryUrl)}</a></dd></div>
-        <div><dt>Clone URL</dt><dd>${escapeHtml(repository?.cloneUrl ?? 'unknown')}</dd></div>
-      </dl>
+    <article class="card">
+      <header class="page-header">
+        <div>
+          <h2>Repository files</h2>
+          <p class="muted">Latest contents from GitHub.</p>
+        </div>
+        <a class="button button-secondary" href="${escapeHtml(project.repositoryUrl)}" target="_blank" rel="noreferrer">Open on GitHub</a>
+      </header>
       <table>
         <thead><tr><th>Type</th><th>Path</th><th>Size</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-    </section>`;
+    </article>`;
 }
 
-function renderDeploymentStatusPage(project?: Project, latestDeployment?: Deployment): string {
+function renderDeploymentStatusPage(project?: Project, summary?: ProjectStatusSummary, githubStatus?: GitHubConnectionStatus): string {
   if (!project) {
     return renderEmptyProjectNotice();
   }
 
-  const deployment = latestDeployment ?? project.deployments.at(-1);
+  const { repositoryReady, namespaceReady } = projectPipelineReadiness(project, summary, githubStatus);
+  const deployment = summary?.latestDeployment ?? project.deployments.at(-1);
+  const canDeploy = repositoryReady && namespaceReady;
+
   return `
+    ${!canDeploy ? renderGitHubConnectPanel(project, summary, githubStatus) : ''}
     <article class="card">
       <h2>Deployment status</h2>
-      <form data-action="trigger-deployment" data-project-id="${escapeHtml(project.id)}">
-        <label>Git ref <input name="gitRef" value="main"></label>
-        <button type="submit">Trigger deployment</button>
-      </form>
+      ${canDeploy
+        ? `<form data-action="trigger-deployment" data-project-id="${escapeHtml(project.id)}">
+            <label>Git ref <input name="gitRef" value="main"></label>
+            <button type="submit">Trigger deployment</button>
+          </form>`
+        : '<p class="muted">Connect GitHub, create a repository, and provision infrastructure before triggering a deployment.</p>'}
       ${deployment ? `
         <dl class="metadata-grid">
-          <div><dt>Deployment</dt><dd>${escapeHtml(deployment.id)}</dd></div>
           <div><dt>State</dt><dd>${escapeHtml(deployment.state)}</dd></div>
           <div><dt>Git ref</dt><dd>${escapeHtml(deployment.gitRef)}</dd></div>
           <div><dt>Finished</dt><dd>${escapeHtml(deployment.finishedAt ?? 'In progress')}</dd></div>
         </dl>` : '<p>No deployments have been triggered yet.</p>'}
-    </article>`;
+    </article>
+    ${canDeploy ? renderProjectPipelineActions(project, summary, githubStatus) : ''}`;
 }
 
-function renderDomainManagementPage(project?: Project): string {
+function renderDomainManagementPage(project?: Project, summary?: ProjectStatusSummary): string {
   if (!project) {
     return renderEmptyProjectNotice();
   }
 
+  const deployment = projectDeployment(project, summary);
+  const canAttachLiveUrl = deployment?.state === 'succeeded';
   const domains = project.domains.length
     ? project.domains.map((domain) => `
       <li>
@@ -1468,8 +2050,10 @@ function renderDomainManagementPage(project?: Project): string {
   return `
     <article class="card">
       <h2>Domain management</h2>
-      <p>Platform hostname: <strong>${escapeHtml(project.platformHostname)}</strong></p>
-      <button data-action="attach-platform-subdomain" data-project-id="${escapeHtml(project.id)}">Attach platform subdomain</button>
+      <p>Your reserved live URL is <strong>${escapeHtml(project.platformHostname)}</strong>.</p>
+      ${canAttachLiveUrl
+        ? `<button data-action="attach-platform-subdomain" data-project-id="${escapeHtml(project.id)}">${project.platformSubdomainAttached ? 'Platform URL attached' : 'Attach platform URL'}</button>`
+        : '<p class="muted">Complete a successful deployment before attaching your live URL.</p>'}
       <form data-action="add-domain" data-project-id="${escapeHtml(project.id)}">
         <label>Custom domain <input name="hostname" placeholder="www.example.com" required></label>
         <label>DNS setup mode
@@ -1668,36 +2252,53 @@ function renderAssistantPage(project: Project | undefined, messages: AssistantMe
     </article>`;
 }
 
-function renderLifecycleStepper(currentState: ProjectLifecycleState): string {
-  const activeIndex = lifecycleStates.findIndex((state) => state.id === currentState);
-  const isFailure = currentState === 'failed';
-  return `
-    <ol class="lifecycle-stepper lifecycle-stepper-${escapeHtml(currentState)}">
-      ${lifecycleStates.map((state, index) => `
-        <li class="${!isFailure && index < activeIndex ? 'complete' : ''} ${state.id === currentState ? 'current' : ''}">
-          <strong>${escapeHtml(state.label)}</strong>
-          <span>${escapeHtml(state.description)}</span>
-        </li>`).join('')}
-    </ol>`;
-}
-
 function renderEmptyProjectNotice(): string {
   return `
     <article class="card">
       <h2>Select a project</h2>
       <p>Create or select a project before opening this page.</p>
-      <a class="button" href="#project-list">Go to project list</a>
+      <a class="button" href="${escapeHtml(pageHref('project-list'))}">Back to projects</a>
     </article>`;
 }
 
+function parseDashboardNotice(search?: string): { message: string; variant: 'success' | 'error' } | undefined {
+  if (!search) {
+    return undefined;
+  }
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  const error = params.get('github_error');
+  if (error) {
+    return { message: error, variant: 'error' };
+  }
+  if (params.get('notice') === 'github_connected') {
+    return {
+      message: 'GitHub connected successfully. Choose a repository or create a new one for this project.',
+      variant: 'success',
+    };
+  }
+  return undefined;
+}
 
-function renderLifecycleLegend(): string {
-  return `<ol>${lifecycleStates.map((state) => `<li><span class="status status-${state.id}">${escapeHtml(state.label)}</span></li>`).join('')}</ol>`;
+function clearDashboardNoticeQuery(): void {
+  if (!globalThis.location) {
+    return;
+  }
+  const url = new URL(globalThis.location.href);
+  if (!url.searchParams.has('notice') && !url.searchParams.has('github_error')) {
+    return;
+  }
+  url.searchParams.delete('notice');
+  url.searchParams.delete('github_error');
+  globalThis.history?.replaceState?.(null, '', `${url.pathname}${url.hash}`);
 }
 
 function pageFromHash(hash?: string): DashboardPageId | undefined {
-  const id = hash?.replace(/^#/, '').split('?')[0] as DashboardPageId | undefined;
-  return dashboardPages.some((page) => page.id === id) ? id : undefined;
+  const id = hash?.replace(/^#/, '').split('?')[0];
+  if (!id || id === 'project-list') {
+    return 'project-list';
+  }
+  const pageId = id as DashboardPageId;
+  return dashboardPages.some((page) => page.id === pageId) ? pageId : undefined;
 }
 
 function projectIdFromHash(hash?: string): string | undefined {
@@ -1716,9 +2317,12 @@ function pageHref(page: DashboardPageId, projectId?: string): string {
     if (page === 'gitlab-repository-status') {
       return `/projects/${encodeURIComponent(projectId)}/repository`;
     }
-    return `#${page}?projectId=${encodeURIComponent(projectId)}`;
+    return `/dashboard#${page}?projectId=${encodeURIComponent(projectId)}`;
   }
-  return `#${page}`;
+  if (page === 'project-list') {
+    return '/dashboard';
+  }
+  return `/dashboard#${page}`;
 }
 
 function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
@@ -1726,8 +2330,10 @@ function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
   return exists ? items.map((existing) => existing.id === item.id ? item : existing) : [...items, item];
 }
 
-function requiredCredentials(data: FormData): { email: string; password: string } {
-  return { email: String(data.get('email') ?? ''), password: String(data.get('password') ?? '') };
+function isAuthFailure(message: string): boolean {
+  return message.includes('Authentication is required')
+    || message.includes('Invalid email or password')
+    || message.includes('Email verification is required');
 }
 
 function optionalString(value: FormDataEntryValue | null): string | undefined {

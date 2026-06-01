@@ -13,7 +13,8 @@ Core resources:
 - `rbac.yaml` creates the `project-deployer` `ServiceAccount`, namespace-scoped `Role`, and `RoleBinding` used by deploy automation.
 - `external-secret.yaml` maps per-project secret material from External Secrets Operator into the namespace-local `project-secrets` Kubernetes Secret.
 - `frontend-deployment.yaml`, `backend-deployment.yaml`, and `static-site-deployment.yaml` provide role-specific workload and service templates.
-- `ingress.yaml` serves `REPLACE_WITH_SLUG.divband.ir` and a verified custom domain such as `project2.com`, and integrates with cert-manager through both ingress annotations and an explicit `Certificate`.
+- `welcome-deployment.yaml` serves a default nginx welcome page for newly created projects until CI replaces it with the customer application.
+- `ingress-platform.yaml` routes only the platform hostname to the welcome service; use `ingress.yaml` when workspace hosts and verified custom domains are also required.
 - `httproute.yaml` is a Gateway API alternative for clusters where TLS and host attachment are managed by the shared gateway layer.
 - `certificate-issuers.yaml` provides cert-manager ACME ClusterIssuer templates for HTTP-01 and DNS-01 validation.
 - `delegated-certificate.yaml` is an optional DNS-01 `Certificate` template for delegated managed DNS zones that need both the verified hostname and wildcard SAN.
@@ -32,3 +33,34 @@ At minimum, provisioning must replace:
 - Secrets: `REPLACE_WITH_CLUSTER_SECRET_STORE`; secret payloads are read from `projects/{project_id}/{environment}`.
 
 Do not render an unverified custom domain into `ingress.yaml`, `httproute.yaml`, or `Certificate` resources. If a project has no custom domain yet, render only the platform hostname or remove the custom-domain host entries during templating.
+
+## Welcome profile (automatic project bootstrap)
+
+The backend applies this subset when `KUBERNETES_APPLY=true` and a project is created (see `WELCOME_TEMPLATE_FILES` in `apps/backend/src/services/kubernetes.ts`):
+
+| File | Applied on create |
+| --- | --- |
+| `tenant-namespace.yaml` | Yes |
+| `network-policy.yaml` | Yes |
+| `rbac.yaml` | Yes |
+| `welcome-deployment.yaml` | Yes — nginx + ConfigMap welcome HTML |
+| `ingress-platform.yaml` | Yes — platform hostname only |
+
+Not applied on the welcome path (reserved for CI or manual full provision):
+
+- `external-secret.yaml`
+- `frontend-deployment.yaml`, `backend-deployment.yaml`, `static-site-deployment.yaml`
+- `code-server-deployment.yaml`
+- `ingress.yaml` (includes workspace host and custom-domain slots)
+
+Disable automatic provisioning with `DIVBAND_AUTO_PROVISION_PROJECTS=0` on the control-plane backend. Retry failed applies with `POST /projects/{id}/kubernetes-namespace`.
+
+## Related documentation
+
+| Topic | Document |
+| --- | --- |
+| Auto-provision overview | [`README.md`](../README.md#project-auto-provision-on-k3s) |
+| Welcome vs full templates | [`architecture.md`](../docs/architecture.md), [`operations.md`](../docs/operations.md) |
+| Ansible bootstrap | [`../ansible/README.md`](../ansible/README.md) |
+| CI replacement of welcome | [`../docs/deployments.md`](../docs/deployments.md) |
+| Backend env vars | [`../../apps/backend/README.md`](../../apps/backend/README.md) |

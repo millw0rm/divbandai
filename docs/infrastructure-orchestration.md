@@ -10,6 +10,8 @@ Related docs:
 - Machine-readable plan: [`infra/orchestration/bootstrap-plan.json`](../infra/orchestration/bootstrap-plan.json)
 - Planner CLI: [`infra/orchestration/plan-bootstrap.mjs`](../infra/orchestration/plan-bootstrap.mjs)
 
+Related docs: [`README.md`](../README.md), [`docs/product.md`](../docs/product.md), [`docs/infrastructure-orchestration.md`](../docs/infrastructure-orchestration.md), [`docs/operations.md`](../docs/operations.md), [`infra/k8s/README.md`](../k8s/README.md).
+
 ## Core rule: one owner per resource
 
 Never let Ansible and Terraform manage the same durable resource. Pick one controller and record it in code, state, and runbooks.
@@ -22,7 +24,7 @@ Never let Ansible and Terraform manage the same durable resource. Pick one contr
 | GitLab platform catalog (seed tenants/projects/runners) | **Terraform** (`infra/gitlab/terraform`) | groups, branch protection, CI variables, project-scoped runners |
 | GitLab server on a VM | **Ansible** (`roles/gitlab`) | Omnibus install or connect to existing endpoint |
 | Per-project GitLab repo + CI setup | **Backend API** | triggered by `POST /projects/{id}/gitlab-repository` |
-| Per-project Kubernetes namespace | **Backend API** (+ `kubectl` or GitOps) | renders `infra/k8s/base` |
+| Per-project Kubernetes namespace | **Backend API** (+ `kubectl`) | Auto welcome stack on `POST /projects`; renders [`infra/k8s/base`](../infra/k8s/base) |
 | Per-customer domain TXT verification | **Backend API** (+ DNS provider adapter) | event-driven, not Terraform |
 
 Terraform always runs on the **operator machine** (laptop, bastion, or protected CI job) — the Ansible controller — not on k3s control-plane nodes. Ansible playbooks that invoke Terraform use `delegate_to: localhost`.
@@ -81,11 +83,17 @@ Once `platform_ready` is reached, **per-project** work is backend-driven:
 
 ```text
 POST /projects
-  → POST /projects/{id}/gitlab-repository   (backend → GitLab API)
-  → POST /projects/{id}/kubernetes-namespace (backend → render/apply infra/k8s/base)
-  → POST /projects/{id}/platform-subdomain / custom domain APIs
-  → GitLab CI deploys into the project namespace
+  → (automatic when KUBERNETES_APPLY=true)
+     kubectl apply welcome stack in project-{slug}
+     welcome nginx + platform ingress + deployment record + hostname attached
+  → POST /projects/{id}/gitlab-repository or …/github-repository   (optional; user or agent)
+  → GitLab CI deploys customer app into project-{slug} (replaces welcome page)
+  → POST /projects/{id}/domains / …/verify for custom hostnames
 ```
+
+Manual retry: `POST /projects/{id}/kubernetes-namespace` re-applies the welcome stack if automatic provisioning failed.
+
+Further reading: [`README.md`](../README.md#project-auto-provision-on-k3s), [`operations.md`](./operations.md#mvp-provisioning-runbook-api-request-to-live-hostname), [`infra/k8s/README.md`](../infra/k8s/README.md), [`deployments.md`](./deployments.md).
 
 Do not route these steps through Ansible or Terraform unless you are doing a one-time seed outside the product API.
 

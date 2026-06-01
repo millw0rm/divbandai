@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: frontend
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     app.kubernetes.io/name: frontend
     app.kubernetes.io/component: frontend
@@ -71,7 +71,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: frontend
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     app.kubernetes.io/name: frontend
     divband.io/project-id: REPLACE_WITH_PROJECT_ID

@@ -8,7 +8,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     app.kubernetes.io/name: web
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
@@ -71,7 +71,7 @@ metadata:
     divband.io/environment: REPLACE_WITH_ENVIRONMENT
     divband.io/owner-id: REPLACE_WITH_OWNER_ID
   name: web
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID

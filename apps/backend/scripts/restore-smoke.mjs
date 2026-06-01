@@ -7,6 +7,7 @@ store.users.set('user_restore', {
   id: 'user_restore',
   email: 'restore@example.test',
   name: 'Restore User',
+  username: 'restore-user',
   createdAt: new Date(0).toISOString(),
   emailVerifiedAt: new Date(0).toISOString(),
   billingTier: 'free',
@@ -30,9 +31,10 @@ store.projects.set('project_restore', {
   name: 'Restore App',
   status: 'deployed',
   gitlabPath: 'restore-org/restore-app',
-  namespace: 'divband-restore-app',
-  platformHostname: 'restore-app.divband.ir',
-  runnerTag: 'divband-restore-app',
+  namespace: 'user-restore-user',
+  platformHostname: 'restore-app.restore-user.divband.com',
+  workspaceHostname: 'code.restore-app.restore-user.divband.com',
+  runnerTag: 'divband-restore-user-restore-app',
   namespaceProvisioned: true,
   platformSubdomainAttached: true,
   domains: [],
@@ -44,5 +46,6 @@ store.projects.set('project_restore', {
 const restored = hydrateBackendStore(snapshotBackendStore(store));
 assert.equal(restored.users.get('user_restore')?.emailVerifiedAt, new Date(0).toISOString());
 assert.equal(restored.organizations.get('org_restore')?.billingStatus, 'active');
-assert.equal(restored.projects.get('project_restore')?.platformHostname, 'restore-app.divband.ir');
+assert.equal(restored.projects.get('project_restore')?.platformHostname, 'restore-app.restore-user.divband.com');
+assert.equal(restored.projects.get('project_restore')?.workspaceHostname, 'code.restore-app.restore-user.divband.com');
 console.log('restore smoke passed');

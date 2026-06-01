@@ -72,8 +72,8 @@ Expected outcomes:
 - ingress-nginx, cert-manager, External Secrets, metrics-server, logging, backend, and frontend workloads are running.
 - The configured `ClusterIssuer` is ready or has an understood DNS/HTTP-01 remediation path.
 - GitLab runners are online and tagged only for the projects they should deploy.
-- The backend can render/apply tenant manifests with `KUBERNETES_TEMPLATE_DIR` and `KUBERNETES_APPLY` configured intentionally.
-- A test project can be created, assigned a GitLab project, deployed into a Kubernetes namespace, and reached through the platform hostname.
+- The backend can render/apply tenant welcome manifests with `KUBERNETES_TEMPLATE_DIR`, `KUBERNETES_APPLY`, and `kubectl` in the backend container when a user creates a project.
+- A test project created in the dashboard provisions `project-{slug}` with a welcome nginx page reachable at the platform hostname (DNS permitting); CI can later replace the welcome workload.
 
 ## Business readiness boundary
 
@@ -106,7 +106,7 @@ Complete these before positioning Divband as a public MVP business:
 6. Enforce plan quotas, rate limits, retention limits, and abuse scanning.
 7. Add billing/tier enforcement if charging customers.
 8. Run a security review covering auth, tenant isolation, GitLab tokens, Kubernetes RBAC, runner isolation, domain takeover, and secret handling.
-9. Add end-to-end smoke tests for signup, project creation, GitLab project creation, Kubernetes namespace provisioning, deployment, platform hostname routing, custom-domain verification, and rollback.
+9. Add end-to-end smoke tests for signup, project creation (auto welcome stack on k3s), optional GitLab project creation, CI deploy replacing welcome, platform hostname routing, custom-domain verification, and rollback.
 10. Document support, terms, privacy, abuse reporting, incident response, and backup/restore processes.
 
 ## Recommended launch sequence
@@ -133,3 +133,13 @@ Public signup must stay disabled or invite-only until the following production c
 | End-to-end smoke | `npm run smoke:controls --workspace @divband/backend` must pass for signup through project live-hostname access and password reset. |
 
 Default posture: `DIVBAND_SIGNUP_MODE` is invite-only unless explicitly set to `public`. Keep it invite-only for pilots and set `DIVBAND_SIGNUP_INVITE_CODES` for controlled onboarding.
+
+## Related documentation
+
+| Topic | Document |
+| --- | --- |
+| Ansible/k3s bootstrap | [`infra/ansible/README.md`](../infra/ansible/README.md) |
+| Per-project auto-provision | [`README.md`](../README.md#project-auto-provision-on-k3s) |
+| Operator runbook | [`operations.md`](operations.md) |
+| VM topology | [`vm-reference-architecture.md`](vm-reference-architecture.md) |
+| Product checklist | [`product.md`](product.md#release-checklist) |

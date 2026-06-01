@@ -151,7 +151,10 @@ export function snapshotBackendStore(store: BackendStore): BackendStoreSnapshot 
 }
 
 export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: BackendStore = createBackendStore()): BackendStore {
-  store.users = mapById(snapshot.users);
+  store.users = mapById(snapshot.users.map((user, index) => ({
+    ...user,
+    username: user.username || normalizeLegacyUsername(user, index),
+  })));
   store.usersByEmail = new Map(snapshot.usersByEmail);
   store.passwordHashesByUserId = new Map(snapshot.passwordHashesByUserId);
   store.emailVerificationChallenges = mapById(snapshot.emailVerificationChallenges ?? []);
@@ -168,6 +171,7 @@ export function hydrateBackendStore(snapshot: BackendStoreSnapshot, store: Backe
     const { environmentVariables: _environmentVariables, ...safeProject } = legacyProject;
     return {
       ...safeProject,
+      workspaceHostname: safeProject.workspaceHostname ?? inferWorkspaceHostname(safeProject.platformHostname),
       domains: (safeProject.domains ?? []).map((domain) => normalizeProjectDomain(domain, safeProject.platformHostname)),
     };
   }));
@@ -212,6 +216,20 @@ function normalizeProjectDomain(domain: Project['domains'][number], platformHost
 
 function mapById<T extends { id: string }>(values: T[]): Map<string, T> {
   return new Map(values.map((value) => [value.id, value]));
+}
+
+function normalizeLegacyUsername(user: User, index: number): string {
+  const fromEmail = user.email.split('@')[0] ?? '';
+  const normalized = fromEmail.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return normalized || `user-${index + 1}`;
+}
+
+function inferWorkspaceHostname(platformHostname: string): string {
+  const parts = platformHostname.split('.');
+  if (parts.length >= 3) {
+    return `code.${parts.slice(0, -2).join('.')}.${parts.slice(-2).join('.')}`;
+  }
+  return `code.${platformHostname}`;
 }
 
 export const defaultStore = createBackendStore();

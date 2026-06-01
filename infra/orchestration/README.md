@@ -20,6 +20,8 @@ node infra/orchestration/plan-bootstrap.mjs --state infra/orchestration/state.js
 
 Full design and ownership rules: [`docs/infrastructure-orchestration.md`](../docs/infrastructure-orchestration.md).
 
+After `platform_ready`, per-project Kubernetes work is **backend-driven** (auto welcome stack on `POST /projects`) — not part of this bootstrap planner. See [`README.md`](../../README.md#project-auto-provision-on-k3s).
+
 ## Profiles
 
 - `vm_ansible` — k3s + Ansible cluster add-ons (default VM path)

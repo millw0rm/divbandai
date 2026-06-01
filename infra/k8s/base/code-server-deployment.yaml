@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workspace-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
+  labels:
+    app.kubernetes.io/name: workspace
+    app.kubernetes.io/component: code-server
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/project-slug: REPLACE_WITH_SLUG
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: workspace
+      divband.io/project-slug: REPLACE_WITH_SLUG
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: workspace
+        app.kubernetes.io/component: code-server
+        divband.io/project-id: REPLACE_WITH_PROJECT_ID
+        divband.io/project-slug: REPLACE_WITH_SLUG
+        divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+        divband.io/environment: REPLACE_WITH_ENVIRONMENT
+        divband.io/owner-id: REPLACE_WITH_OWNER_ID
+    spec:
+      serviceAccountName: project-deployer
+      containers:
+        - name: code-server
+          image: REPLACE_WITH_WORKSPACE_IMAGE
+          imagePullPolicy: IfNotPresent
+          args:
+            - --auth
+            - none
+            - --bind-addr
+            - 0.0.0.0:8080
+            - /home/coder/project
+          ports:
+            - containerPort: 8080
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: REPLACE_WITH_WORKSPACE_CPU_REQUEST
+              memory: REPLACE_WITH_WORKSPACE_MEMORY_REQUEST
+            limits:
+              cpu: REPLACE_WITH_WORKSPACE_CPU_LIMIT
+              memory: REPLACE_WITH_WORKSPACE_MEMORY_LIMIT
+          volumeMounts:
+            - name: project-workspace
+              mountPath: /home/coder/project
+      volumes:
+        - name: project-workspace
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workspace-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
+  labels:
+    app.kubernetes.io/name: workspace
+    divband.io/project-id: REPLACE_WITH_PROJECT_ID
+    divband.io/project-slug: REPLACE_WITH_SLUG
+    divband.io/tenant-id: REPLACE_WITH_TENANT_ID
+    divband.io/environment: REPLACE_WITH_ENVIRONMENT
+    divband.io/owner-id: REPLACE_WITH_OWNER_ID
+spec:
+  selector:
+    app.kubernetes.io/name: workspace
+    divband.io/project-slug: REPLACE_WITH_SLUG
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

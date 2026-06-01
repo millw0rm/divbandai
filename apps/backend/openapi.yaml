@@ -393,6 +393,13 @@ paths:
                       $ref: '#/components/schemas/Project'
     post:
       summary: Create a project
+      description: |
+        Creates project metadata and owner membership. When `KUBERNETES_APPLY=true`
+        and auto-provision is enabled (`DIVBAND_AUTO_PROVISION_PROJECTS`, default on
+        when apply is enabled), also applies the welcome Kubernetes stack in
+        `project-{slug}` (nginx welcome page, platform ingress, deployment record,
+        platform hostname attached). Failures are audited; retry with
+        `POST /projects/{projectId}/kubernetes-namespace`.
       requestBody:
         required: true
         content:
@@ -584,7 +591,13 @@ paths:
     parameters:
       - $ref: '#/components/parameters/ProjectId'
     post:
-      summary: Provision the Kubernetes namespace for a project
+      summary: Provision or retry the Kubernetes welcome stack for a project
+      description: |
+        Idempotently applies the welcome profile from `infra/k8s/base`
+        (namespace `project-{slug}`, RBAC, network policy, nginx welcome page,
+        platform ingress). Also used automatically on project create when
+        `KUBERNETES_APPLY=true`. Records welcome deployment and attaches platform
+        hostname when not already done.
       responses:
         '200':
           description: Namespace provisioned

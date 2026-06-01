@@ -1,5 +1,9 @@
 # Security model
 
+Related docs: [`tenancy.md`](tenancy.md), [`operations.md`](operations.md), [`architecture.md`](architecture.md), [`product.md`](product.md).
+
+Automatic Kubernetes provisioning on project create runs with the control-plane backend's cluster credentials (`KUBERNETES_APPLY=true`). Tenant isolation still depends on per-project namespaces (`project-{slug}`), RBAC, network policy, and host-based routing — see [`infra/k8s/README.md`](../infra/k8s/README.md).
+
 ## Identity model
 
 The control plane has first-class records for:

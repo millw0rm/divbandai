@@ -1,6 +1,5 @@
-import DashboardApp from '../src/DashboardApp';
+import LandingPage from '../src/LandingPage';
 
 export default function Page() {
-  return <DashboardApp />;
+  return <LandingPage />;
 }
-

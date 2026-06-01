@@ -18,6 +18,17 @@ For how this path compares to Ansible, Kubernetes, and production deployment scr
 | Object storage | The backend uses in-memory object metadata for publish planning; the smoke path below uses project deployment status rather than static-file upload promotion. | Mocked locally. |
 | Email | No outbound email is sent for registration or local flows. | Mocked/not wired. |
 | Billing | Plans and ownership are local metadata only; no payment provider is called. | Mocked/not wired. |
+| Per-project Kubernetes | Not applied locally. On k3s/VPS backends with `KUBERNETES_APPLY=true`, `POST /projects` auto-provisions `project-{slug}` with a nginx welcome page. | Real on cluster-backed backends only. |
+
+## Production-style auto-provision (not local)
+
+On a k3s/VPS control plane, project creation triggers real Kubernetes work when the backend has:
+
+- `KUBERNETES_APPLY=true`
+- `KUBERNETES_CONFIG_MODE=kubeconfig` (with mounted kubeconfig)
+- `DIVBAND_AUTO_PROVISION_PROJECTS=true` (Ansible default; set to `0` to disable)
+
+That path is documented in [`development-vs-production.md`](./development-vs-production.md), [`operations.md`](./operations.md), [`README.md`](../README.md#project-auto-provision-on-k3s), and [`../infra/k8s/README.md`](../infra/k8s/README.md). Local `npm run dev:mvp` intentionally skips it.
 
 ## Demo accounts
 

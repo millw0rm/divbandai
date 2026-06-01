@@ -49,6 +49,20 @@ This Ansible layer intentionally reuses existing repository paths instead of dup
 - The backend runtime accepts `KUBERNETES_CONFIG_MODE=kubeconfig` and the operator-facing `KUBERNETES_MODE=kubeconfig`; Ansible sets both and mounts `KUBECONFIG` from the generated cluster kubeconfig secret.
 - GitLab CI templates expect a base64 kubeconfig variable (`KUBE_CONFIG_B64`), and `infra/gitlab/terraform/projects.auto.tfvars.example` also shows the optional plain `KUBE_CONFIG` hand-off.
 
+### Per-project auto-provision (after control plane is up)
+
+Once `divband_app` has deployed the backend with `KUBERNETES_APPLY=true` and `DIVBAND_AUTO_PROVISION_PROJECTS=true` (defaults in [`roles/divband_app/defaults/main.yml`](roles/divband_app/defaults/main.yml)), **creating a project in the dashboard** automatically applies tenant manifests — no separate Ansible play per project.
+
+| Step | Owner | What happens |
+| --- | --- | --- |
+| User creates project | Backend API | `POST /projects` → namespace `project-{slug}`, welcome nginx, platform ingress |
+| User connects GitHub/GitLab | Backend API | Optional; enables CI |
+| User pushes code | GitLab CI | Replaces welcome workload in same namespace |
+
+Operator docs: [`README.md`](../../README.md#project-auto-provision-on-k3s), [`docs/operations.md`](../../docs/operations.md), [`infra/k8s/README.md`](../k8s/README.md).
+
+Ansible bootstraps the **shared cluster and control plane** only. Per-tenant resources are backend-driven after bootstrap completes ([`docs/infrastructure-orchestration.md`](../../docs/infrastructure-orchestration.md)).
+
 ## 1. Copy the example inventory
 
 From the repository root:

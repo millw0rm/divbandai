@@ -40,6 +40,13 @@ The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's bu
 | `GITHUB_OAUTH_CALLBACK_URL` | `http://localhost:3000/api/auth/callback/github` | Optional explicit callback URL; defaults to `${API_BASE_URL}/api/auth/callback/github`. |
 | `GITLAB_URL` | `https://gitlab.com` | GitLab instance base URL used by the GitLab service boundary. |
 | `KUBERNETES_CONFIG_MODE` / `KUBERNETES_MODE` | `disabled` | One of `disabled`, `in_cluster`, or `kubeconfig`; `KUBERNETES_MODE` is accepted for operator bootstrap hand-offs. |
+| `KUBERNETES_APPLY` | `false` | When `true`, the backend runs `kubectl apply` for tenant manifests. Required for automatic project provisioning on k3s/VPS. |
+| `KUBERNETES_TEMPLATE_DIR` | `infra/k8s/base` | Directory of `REPLACE_WITH_*` tenant templates. |
+| `DIVBAND_AUTO_PROVISION_PROJECTS` | on when apply enabled | Set to `0`/`false` to skip automatic welcome-stack provisioning on `POST /projects`. |
+| `KUBERNETES_WELCOME_IMAGE` | `nginx:1.27-alpine` | Container image for the default per-project welcome page. |
+| `CERT_MANAGER_CLUSTER_ISSUER` | `letsencrypt-prod` | ClusterIssuer name rendered into tenant ingress/certificate templates. |
+| `KUBERNETES_INGRESS_CLASS` | `nginx` | Ingress class name for tenant routes. |
+| `EXTERNAL_SECRET_STORE_NAME` | `divband-tenant-secrets` | ClusterSecretStore name for full-stack templates that include `external-secret.yaml`. |
 | `OBJECT_STORAGE_PROVIDER` | `auto` | `auto`, `memory`, or `s3`; `auto` selects S3 when access key and secret env vars are present, otherwise the in-memory development adapter. |
 | `OBJECT_STORAGE_BUCKET` | `divband-local` | Object storage bucket for publish uploads. |
 | `OBJECT_STORAGE_ENDPOINT` | `http://localhost:9000` | Optional S3-compatible endpoint. |
@@ -117,4 +124,16 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=...
 
 Run `apps/backend/migrations/002_postgres_snapshot_persistence.sql` against the
 production database and configure the bucket permissions/CORS described in
-`apps/backend/PRODUCTION.md` before starting replicas.
+[`PRODUCTION.md`](PRODUCTION.md) before starting replicas.
+
+For k3s tenant auto-provision (`KUBERNETES_APPLY`, welcome stack on project create), see [`PRODUCTION.md`](PRODUCTION.md#kubernetes-tenant-auto-provision), [`../../README.md`](../../README.md#project-auto-provision-on-k3s), and [`../../infra/k8s/README.md`](../../infra/k8s/README.md).
+
+## Related documentation
+
+| Topic | Document |
+| --- | --- |
+| Local dev | [`docs/local-mvp.md`](../../docs/local-mvp.md) |
+| Production persistence + K8s | [`PRODUCTION.md`](PRODUCTION.md) |
+| OpenAPI | [`openapi.yaml`](openapi.yaml) |
+| Architecture | [`docs/architecture.md`](../../docs/architecture.md) |
+| Operator runbook | [`docs/operations.md`](../../docs/operations.md) |

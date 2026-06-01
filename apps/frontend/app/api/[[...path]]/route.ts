@@ -46,24 +46,35 @@ async function handle(request: NextRequest, context: RouteContext): Promise<Next
     return NextResponse.json({ ok: true });
   }
 
-  const { backend, runtimeStore } = await getBackendRuntime();
-  const apiRequest = await toApiRequest(request, pathSegments);
-  const response = await backend.handle(apiRequest);
-  await runtimeStore.persist();
-  if (request.method === 'GET' && (pathSegments.join('/') === 'auth/github/callback' || pathSegments.join('/') === 'auth/callback/github')) {
-    const redirectTo = redirectPath(response.body);
-    if (redirectTo) {
-      return NextResponse.redirect(new URL(redirectTo, browserSafeOrigin(request)));
+  try {
+    const { backend, runtimeStore } = await getBackendRuntime();
+    const apiRequest = await toApiRequest(request, pathSegments);
+    const response = await backend.handle(apiRequest);
+    await runtimeStore.persist();
+    if (request.method === 'GET' && (pathSegments.join('/') === 'auth/github/callback' || pathSegments.join('/') === 'auth/callback/github')) {
+      const redirectTo = redirectPath(response.body);
+      if (redirectTo) {
+        return NextResponse.redirect(new URL(redirectTo, browserSafeOrigin(request)));
+      }
+      if (response.status >= 400) {
+        return NextResponse.redirect(new URL(callbackErrorPath(response.body), browserSafeOrigin(request)));
+      }
     }
-    if (response.status >= 400) {
-      return NextResponse.redirect(new URL(callbackErrorPath(response.body), browserSafeOrigin(request)));
-    }
+    return NextResponse.json(response.body ?? { error: { message: 'Empty API response.' } }, { status: response.status });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'API request failed.';
+    console.error('[api]', pathSegments.join('/') || '/', message);
+    return NextResponse.json({ error: { message } }, { status: 500 });
   }
-  return NextResponse.json(response.body, { status: response.status });
 }
 
 async function getBackendRuntime(): Promise<BackendRuntime> {
-  backendRuntimePromise ??= createBackendRuntime();
+  if (!backendRuntimePromise) {
+    backendRuntimePromise = createBackendRuntime().catch((error) => {
+      backendRuntimePromise = undefined;
+      throw error;
+    });
+  }
   return backendRuntimePromise;
 }
 
@@ -84,7 +95,9 @@ async function createBackendRuntime(): Promise<BackendRuntime> {
     driver: config.persistenceDriver,
     databaseUrl: config.databaseUrl,
   });
-  await seedDemoData(runtimeStore.store, { enabled: config.seedDemoData, env: process.env });
+  await seedDemoData(runtimeStore.store, { enabled: config.seedDemoData, env: process.env }).catch((error) => {
+    console.error('[demo-seed]', error instanceof Error ? error.message : error);
+  });
   const objectStorage = createObjectStorage(config.objectStorage, localUploadBaseUrl(config));
   const managedDnsProvider = createManagedDnsProvider(config.managedDns);
   const backend = new BackendService(runtimeStore.store, {
@@ -126,10 +139,12 @@ function localUploadBaseUrl(config: BackendRuntimeConfig): string {
 
 async function toApiRequest(request: NextRequest, pathSegments: string[]): Promise<ApiRequest> {
   const path = backendPath(pathSegments, request.nextUrl.search);
+  const headers = Object.fromEntries(request.headers.entries());
+  headers['x-divband-public-origin'] = browserSafeOrigin(request);
   return {
     method: request.method,
     path,
-    headers: Object.fromEntries(request.headers.entries()),
+    headers,
     body: await requestBody(request),
   };
 }
@@ -153,7 +168,7 @@ function redirectPath(body: unknown): string | undefined {
 
 function callbackErrorPath(body: unknown): string {
   const message = errorMessage(body) ?? 'GitHub authorization failed.';
-  return `/#gitlab-repository-status?github_error=${encodeURIComponent(message)}`;
+  return `/dashboard?github_error=${encodeURIComponent(message)}`;
 }
 
 function errorMessage(body: unknown): string | undefined {
