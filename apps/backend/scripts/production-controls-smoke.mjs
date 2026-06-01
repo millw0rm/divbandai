@@ -31,11 +31,17 @@ assert.ok(login.token, 'verified user can log in');
 const projectBody = await request('POST', '/projects', { name: 'Smoke App', slug: 'smoke-app' }, login.token);
 assert.equal(projectBody.project.platformHostname, 'smoke-app.owner.divband.com');
 assert.equal(projectBody.project.workspaceHostname, 'code.smoke-app.owner.divband.com');
-assert.equal(projectBody.project.namespace, 'user-owner');
-await request('POST', `/projects/${projectBody.project.id}/platform-subdomain`, {}, login.token);
+assert.equal(projectBody.project.namespace, 'project-smoke-app');
+
+await request('POST', `/projects/${projectBody.project.id}/gitlab-repository`, {}, login.token);
+const provisioned = await request('POST', `/projects/${projectBody.project.id}/kubernetes-namespace`, {}, login.token);
+assert.equal(provisioned.project.namespaceProvisioned, true);
+assert.ok(provisioned.project.platformSubdomainAttached, 'welcome bootstrap attaches the platform hostname');
+
 const deploymentBody = await request('POST', `/projects/${projectBody.project.id}/deployments`, { gitRef: 'main', commitSha: 'abc123' }, login.token);
 assert.equal(deploymentBody.deployment.state, 'queued');
 const statusBody = await request('GET', `/projects/${projectBody.project.id}/status`, undefined, login.token);
+assert.ok(statusBody.namespaceProvisioned, 'project namespace is provisioned');
 assert.ok(statusBody.platformSubdomainAttached, 'project has live platform hostname access');
 
 const reset = await request('POST', '/auth/password-reset/request', { email: 'owner@example.test' });

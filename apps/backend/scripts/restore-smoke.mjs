@@ -31,7 +31,7 @@ store.projects.set('project_restore', {
   name: 'Restore App',
   status: 'deployed',
   gitlabPath: 'restore-org/restore-app',
-  namespace: 'user-restore-user',
+  namespace: 'project-restore-app',
   platformHostname: 'restore-app.restore-user.divband.com',
   workspaceHostname: 'code.restore-app.restore-user.divband.com',
   runnerTag: 'divband-restore-user-restore-app',
