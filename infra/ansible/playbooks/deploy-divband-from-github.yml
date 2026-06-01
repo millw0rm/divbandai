@@ -4,6 +4,7 @@
   become: true
   roles:
     - role: cluster_registry
+    - role: cert_manager
     - role: divband_release
     - role: divband_app
   tasks:

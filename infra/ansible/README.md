@@ -245,9 +245,9 @@ Optional GitHub Actions variables:
 ### Switch the VPS deploy to `divband.com`
 
 The single-VPS deploy is driven by GitHub Actions variables rendered into the
-temporary Ansible inventory. Do not patch the live Kubernetes Ingress by hand;
-set the variables and rerun the workflow so Ansible reapplies the control-plane
-manifest.
+temporary Ansible inventory. Do not patch the live Kubernetes Ingress or
+ClusterIssuer by hand; set the variables and rerun the workflow so Ansible
+reapplies the cert-manager issuer and control-plane manifest.
 
 First point DNS at the VPS/load balancer:
 
