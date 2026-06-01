@@ -233,21 +233,20 @@ Optional GitHub Actions variables:
 | `DIVBAND_VPS_HOST` | `185.204.170.33` |
 | `DIVBAND_VPS_USER` | `ubuntu` |
 | `DIVBAND_SOURCE_REPO_URL` | `https://github.com/millw0rm/divband.git` |
-| `DIVBAND_PUBLIC_HOSTNAME` | `185.204.170.33.nip.io` |
-| `DIVBAND_API_BASE_URL` | `http://185.204.170.33/api` |
-| `DIVBAND_PUBLIC_SITE_DOMAIN` | `185.204.170.33.nip.io` |
-| `DIVBAND_UPLOAD_DOMAIN` | `uploads.185.204.170.33.nip.io` |
-| `CERT_MANAGER_ACME_EMAIL` | `admin@divband.com` |
-| `CERT_MANAGER_CLUSTER_ISSUER` | `letsencrypt-staging` |
-| `CERT_MANAGER_ACME_SERVER` | `https://acme-staging-v02.api.letsencrypt.org/directory` |
-| `CLUSTER_REGISTRY_ENDPOINT` | `localhost:30500` |
+
+The public hostnames, cert-manager issuer, registry endpoint, and application
+settings for this VPS path live in
+[`inventory.vps.yml`](inventory.vps.yml). Update that file and redeploy instead
+of storing those values as GitHub Actions variables.
 
 ### Switch the VPS deploy to `divband.com`
 
-The single-VPS deploy is driven by GitHub Actions variables rendered into the
-temporary Ansible inventory. Do not patch the live Kubernetes Ingress or
-ClusterIssuer by hand; set the variables and rerun the workflow so Ansible
-reapplies the cert-manager issuer and control-plane manifest.
+The single-VPS deploy is driven by
+[`inventory.vps.yml`](inventory.vps.yml), with GitHub Actions only providing the
+runner, SSH key, source version, and optional host/repository overrides. Do not
+patch the live Kubernetes Ingress or ClusterIssuer by hand; update the inventory
+and rerun the workflow so Ansible reapplies the cert-manager issuer and
+control-plane manifest.
 
 First point DNS at the VPS/load balancer:
 
@@ -261,28 +260,20 @@ That means project traffic needs DNS records for those generated hosts, wildcard
 delegation/automation, or a later product decision to use a one-label hostname
 shape such as `{projectSlug}.divband.com`.
 
-Then configure the workflow variables:
+Then update `inventory.vps.yml`:
 
-```sh
-DIVBAND_PUBLIC_HOSTNAME=divband.com \
-DIVBAND_API_BASE_URL=https://divband.com/api \
-DIVBAND_PUBLIC_SITE_DOMAIN=divband.com \
-DIVBAND_UPLOAD_DOMAIN=uploads.divband.com \
-CERT_MANAGER_ACME_EMAIL=admin@divband.com \
-make configure-github-actions
+```yaml
+divband_public_hostname: divband.com
+divband_api_base_url: https://divband.com/api
+divband_public_site_domain: divband.com
+divband_upload_domain: uploads.divband.com
+cert_manager_acme_email: admin@divband.com
+cert_manager_cluster_issuer: letsencrypt-prod
+cert_manager_acme_server: https://acme-v02.api.letsencrypt.org/directory
 ```
 
-Equivalent direct `gh` commands:
-
-```sh
-gh variable set DIVBAND_PUBLIC_HOSTNAME --body divband.com
-gh variable set DIVBAND_API_BASE_URL --body https://divband.com/api
-gh variable set DIVBAND_PUBLIC_SITE_DOMAIN --body divband.com
-gh variable set DIVBAND_UPLOAD_DOMAIN --body uploads.divband.com
-gh variable set CERT_MANAGER_ACME_EMAIL --body admin@divband.com
-```
-
-Finally rerun the `Deploy VPS` workflow from GitHub Actions, or push to `main`.
+Commit that inventory change, then rerun the `Deploy VPS` workflow from GitHub
+Actions, or push to `main`.
 After it succeeds:
 
 ```sh

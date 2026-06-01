@@ -62,13 +62,5 @@ set_var() {
 set_var DIVBAND_VPS_HOST "${DIVBAND_VPS_HOST:-185.204.170.33}"
 set_var DIVBAND_VPS_USER "${DIVBAND_VPS_USER:-ubuntu}"
 set_var DIVBAND_SOURCE_REPO_URL "${DIVBAND_SOURCE_REPO_URL:-https://github.com/millw0rm/divband.git}"
-set_var DIVBAND_PUBLIC_HOSTNAME "${DIVBAND_PUBLIC_HOSTNAME:-185.204.170.33.nip.io}"
-set_var DIVBAND_API_BASE_URL "${DIVBAND_API_BASE_URL:-http://185.204.170.33/api}"
-set_var DIVBAND_PUBLIC_SITE_DOMAIN "${DIVBAND_PUBLIC_SITE_DOMAIN:-185.204.170.33.nip.io}"
-set_var DIVBAND_UPLOAD_DOMAIN "${DIVBAND_UPLOAD_DOMAIN:-uploads.185.204.170.33.nip.io}"
-set_var CERT_MANAGER_ACME_EMAIL "${CERT_MANAGER_ACME_EMAIL:-admin@divband.com}"
-set_var CERT_MANAGER_ACME_SERVER "${CERT_MANAGER_ACME_SERVER:-https://acme-staging-v02.api.letsencrypt.org/directory}"
-set_var CERT_MANAGER_CLUSTER_ISSUER "${CERT_MANAGER_CLUSTER_ISSUER:-letsencrypt-staging}"
-set_var CLUSTER_REGISTRY_ENDPOINT "${CLUSTER_REGISTRY_ENDPOINT:-localhost:30500}"
 
 echo "GitHub Actions deployment settings are configured."

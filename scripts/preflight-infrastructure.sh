@@ -197,12 +197,7 @@ if command -v gh >/dev/null 2>&1; then
     for variable_name in \
       DIVBAND_VPS_HOST \
       DIVBAND_VPS_USER \
-      DIVBAND_SOURCE_REPO_URL \
-      DIVBAND_PUBLIC_HOSTNAME \
-      DIVBAND_API_BASE_URL \
-      DIVBAND_PUBLIC_SITE_DOMAIN \
-      DIVBAND_UPLOAD_DOMAIN \
-      CLUSTER_REGISTRY_ENDPOINT
+      DIVBAND_SOURCE_REPO_URL
     do
       if gh variable list --repo "${github_repo}" --json name --jq '.[].name' 2>/dev/null | grep -Fxq "${variable_name}"; then
         pass "GitHub Actions variable ${variable_name} is set"

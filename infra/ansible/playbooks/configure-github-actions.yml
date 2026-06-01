@@ -18,12 +18,4 @@
         DIVBAND_VPS_HOST: "{{ lookup('env', 'DIVBAND_VPS_HOST') | default('185.204.170.33', true) }}"
         DIVBAND_VPS_USER: "{{ lookup('env', 'DIVBAND_VPS_USER') | default('ubuntu', true) }}"
         DIVBAND_SOURCE_REPO_URL: "{{ lookup('env', 'DIVBAND_SOURCE_REPO_URL') | default('https://github.com/millw0rm/divband.git', true) }}"
-        DIVBAND_PUBLIC_HOSTNAME: "{{ lookup('env', 'DIVBAND_PUBLIC_HOSTNAME') | default('185.204.170.33.nip.io', true) }}"
-        DIVBAND_API_BASE_URL: "{{ lookup('env', 'DIVBAND_API_BASE_URL') | default('http://185.204.170.33/api', true) }}"
-        DIVBAND_PUBLIC_SITE_DOMAIN: "{{ lookup('env', 'DIVBAND_PUBLIC_SITE_DOMAIN') | default('185.204.170.33.nip.io', true) }}"
-        DIVBAND_UPLOAD_DOMAIN: "{{ lookup('env', 'DIVBAND_UPLOAD_DOMAIN') | default('uploads.185.204.170.33.nip.io', true) }}"
-        CERT_MANAGER_ACME_EMAIL: "{{ lookup('env', 'CERT_MANAGER_ACME_EMAIL') | default('admin@divband.com', true) }}"
-        CERT_MANAGER_ACME_SERVER: "{{ lookup('env', 'CERT_MANAGER_ACME_SERVER') | default('https://acme-staging-v02.api.letsencrypt.org/directory', true) }}"
-        CERT_MANAGER_CLUSTER_ISSUER: "{{ lookup('env', 'CERT_MANAGER_CLUSTER_ISSUER') | default('letsencrypt-staging', true) }}"
-        CLUSTER_REGISTRY_ENDPOINT: "{{ lookup('env', 'CLUSTER_REGISTRY_ENDPOINT') | default('localhost:30500', true) }}"
       changed_when: true

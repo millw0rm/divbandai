@@ -1,0 +1,77 @@
+---
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ~/.ssh/divband-vps
+    ansible_python_interpreter: /usr/bin/python3
+
+    divband_environment: demo
+    divband_timezone: UTC
+    container_runtime_engine: containerd
+
+    kubernetes_distribution: k3s
+    kubernetes_api_endpoint: "https://185.204.170.33:6443"
+    kubernetes_pod_cidr: 10.42.0.0/16
+    kubernetes_service_cidr: 10.43.0.0/16
+    kubernetes_template_dir: "{{ playbook_dir }}/../../k8s/base"
+
+    ingress_class_name: nginx
+    ingress_nginx_service_type: NodePort
+    ingress_nginx_http_node_port: 32080
+    ingress_nginx_https_node_port: 32443
+    public_ingress_target: k8s_control_plane
+    load_balancer_kubernetes_api_enabled: false
+    load_balancer_keepalived_enabled: false
+
+    cert_manager_cluster_issuer: letsencrypt-prod
+    cert_manager_acme_email: admin@divband.com
+    cert_manager_acme_server: https://acme-v02.api.letsencrypt.org/directory
+
+    external_secrets_store_name: divband-tenant-secrets
+    external_secrets_provider: disabled
+
+    gitlab_mode: connect
+    gitlab_url: https://github.com
+    gitlab_external_url: "{{ gitlab_url }}"
+    gitlab_run_terraform: false
+
+    divband_namespace: divband-system
+    divband_source_repo_url: https://github.com/millw0rm/divband.git
+    divband_source_version: main
+    cluster_registry_endpoint: localhost:30500
+
+    divband_public_hostname: divband.com
+    divband_api_base_url: https://divband.com/api
+    divband_public_site_domain: divband.com
+    divband_upload_domain: uploads.divband.com
+
+    divband_object_storage_bucket: divband-local
+    divband_object_storage_endpoint: http://localhost:9000
+    divband_object_storage_region: us-east-1
+    divband_object_storage_access_key_id: minioadmin
+    divband_object_storage_secret_access_key: minioadmin
+    divband_database_url: sqlite://./data/divband-backend.sqlite
+    divband_gitlab_url: "{{ gitlab_url }}"
+    divband_gitlab_token: ""
+    divband_gitlab_access_token: ""
+    divband_token_hash_pepper: divband-local-development-token-pepper
+    divband_backend_replicas: 1
+    divband_frontend_replicas: 1
+
+  children:
+    k8s_control_plane:
+      hosts:
+        vps-1:
+          ansible_host: 185.204.170.33
+    gitlab:
+      hosts:
+        vps-1:
+          ansible_host: 185.204.170.33
+    load_balancers:
+      hosts:
+        vps-1:
+          ansible_host: 185.204.170.33
+    monitoring:
+      hosts:
+        vps-1:
+          ansible_host: 185.204.170.33
