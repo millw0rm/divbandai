@@ -1,11 +1,13 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help infra-preflight kubectl-install kube kube-check deploy-production
+.PHONY: help infra-preflight configure-github-actions kubectl-install kube kube-check deploy-production
 
 help: ## List available commands.
 	@printf 'Available commands:\n'
 	@printf '  make infra-preflight [ANSIBLE_INVENTORY=<path>] [GITHUB_REPOSITORY=<owner/repo>] [EXPECTED_GITHUB_ACCOUNT=<login>]\n'
 	@printf '      Check GitHub, repository, Actions setup, inventory hosts, and VM SSH access.\n'
+	@printf '  make configure-github-actions [DIVBAND_PUBLIC_HOSTNAME=divband.com]\n'
+	@printf '      Configure GitHub Actions secrets and deploy variables via Ansible/gh.\n'
 	@printf '  make kubectl-install [KUBECTL_VERSION=v1.30.14]\n'
 	@printf '      Install a repo-local kubectl under .tools/ for k3s operator access.\n'
 	@printf '  make kube ARGS="get nodes -o wide"\n'
@@ -21,6 +23,9 @@ infra-preflight: ## Check local GitHub, Actions, inventory, and VM SSH readiness
 	EXPECTED_GITHUB_ACCOUNT="$(EXPECTED_GITHUB_ACCOUNT)" \
 	DIVBAND_PREFLIGHT_SKIP_SSH="$(DIVBAND_PREFLIGHT_SKIP_SSH)" \
 	./scripts/preflight-infrastructure.sh
+
+configure-github-actions: ## Configure GitHub Actions secrets and deployment variables.
+	ansible-playbook infra/ansible/playbooks/configure-github-actions.yml
 
 kubectl-install: ## Install repo-local kubectl under .tools/.
 	./scripts/install-kubectl.sh

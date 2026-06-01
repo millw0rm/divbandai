@@ -208,6 +208,15 @@ gh auth login -h github.com
 scripts/configure-github-actions-secrets.sh
 ```
 
+A copyable environment sample is available at
+[`github-actions.env.example`](github-actions.env.example):
+
+```sh
+cp infra/ansible/github-actions.env.example .secrets/github-actions.env
+. .secrets/github-actions.env
+make configure-github-actions
+```
+
 The same setup can be run as a local Ansible playbook:
 
 ```sh
@@ -229,6 +238,54 @@ Optional GitHub Actions variables:
 | `DIVBAND_PUBLIC_SITE_DOMAIN` | `185.204.170.33.nip.io` |
 | `DIVBAND_UPLOAD_DOMAIN` | `uploads.185.204.170.33.nip.io` |
 | `CLUSTER_REGISTRY_ENDPOINT` | `localhost:30500` |
+
+### Switch the VPS deploy to `divband.com`
+
+The single-VPS deploy is driven by GitHub Actions variables rendered into the
+temporary Ansible inventory. Do not patch the live Kubernetes Ingress by hand;
+set the variables and rerun the workflow so Ansible reapplies the control-plane
+manifest.
+
+First point DNS at the VPS/load balancer:
+
+```text
+divband.com        A      185.204.170.33
+uploads.divband.com A     185.204.170.33
+```
+
+Project hostnames currently use `{projectSlug}.{username}.{platformDomain}`.
+That means project traffic needs DNS records for those generated hosts, wildcard
+delegation/automation, or a later product decision to use a one-label hostname
+shape such as `{projectSlug}.divband.com`.
+
+Then configure the workflow variables:
+
+```sh
+DIVBAND_PUBLIC_HOSTNAME=divband.com \
+DIVBAND_API_BASE_URL=https://divband.com/api \
+DIVBAND_PUBLIC_SITE_DOMAIN=divband.com \
+DIVBAND_UPLOAD_DOMAIN=uploads.divband.com \
+make configure-github-actions
+```
+
+Equivalent direct `gh` commands:
+
+```sh
+gh variable set DIVBAND_PUBLIC_HOSTNAME --body divband.com
+gh variable set DIVBAND_API_BASE_URL --body https://divband.com/api
+gh variable set DIVBAND_PUBLIC_SITE_DOMAIN --body divband.com
+gh variable set DIVBAND_UPLOAD_DOMAIN --body uploads.divband.com
+```
+
+Finally rerun the `Deploy VPS` workflow from GitHub Actions, or push to `main`.
+After it succeeds:
+
+```sh
+sudo kubectl -n divband-system get ingress divband-control-plane -o wide
+```
+
+The host should be `divband.com`, and `https://divband.com` should route to the
+frontend while `https://divband.com/api/...` routes to the backend.
 
 Required or commonly customized variables:
 
