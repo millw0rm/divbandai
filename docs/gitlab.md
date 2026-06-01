@@ -2,6 +2,8 @@
 
 Divband provisions one GitLab repository and one runner boundary for every hosted project. The GitLab resources are treated as part of the project lifecycle, not as manually managed assets.
 
+Related docs: [`deployments.md`](deployments.md), [`architecture.md`](architecture.md), [`operations.md`](operations.md), [`infra/k8s/README.md`](../infra/k8s/README.md), [`README.md`](../README.md#project-auto-provision-on-k3s).
+
 ## Tenant namespace model
 
 GitLab mirrors divband tenancy:
@@ -12,7 +14,7 @@ git.divband.ir/{tenant-path}/{project-path}
 
 - **Tenant group**: represents a user account or organization. Group variables are allowed only for non-secret tenant metadata that can safely apply to all projects in that tenant.
 - **Project repository**: represents one deployable website or application. Source code, registry images, CI/CD variables, deploy credentials, protected branches, and runner bindings are scoped to this project.
-- **Kubernetes namespace**: runtime target named by the project variable `DIVBAND_NAMESPACE`. It must match the namespace provisioned by Kubernetes automation.
+- **Kubernetes namespace**: runtime target named by the project variable `DIVBAND_NAMESPACE` (`project-{slug}`). Created automatically on project create when `KUBERNETES_APPLY=true`.
 - **Runner tag**: immutable project scheduling selector named by `DIVBAND_RUNNER_TAG`, for example `divband-acme-marketing`.
 
 The Terraform entry point in `infra/gitlab/terraform` accepts a `tenants` map so platform automation can create tenant groups and all nested projects idempotently.
@@ -33,11 +35,11 @@ Container registry access remains project-private. CI jobs push to `$CI_REGISTRY
 
 ## Project lifecycle
 
-1. **Draft**: the dashboard records tenant, project slug, and owner metadata. No GitLab resources exist yet.
-2. **Repository provisioning**: the platform adds the project to the Terraform input model and applies GitLab automation. The project enters `repository_provisioned` only after the GitLab group, repository, branch protection, variables, credentials, and runner registration exist.
-3. **Runner installation**: the runner authentication token is stored in the platform secret store, then used to install a dedicated runner pod or VM with the assigned project tag.
-4. **Namespace provisioning**: Kubernetes automation creates the matching namespace, deployer service account, RBAC, network policy, quotas, and secret synchronization.
-5. **First pipeline**: the project includes the reusable GitLab CI template. The build job produces an artifact, the image job pushes to the project registry, and the deploy job rolls out to `DIVBAND_NAMESPACE`.
+1. **Draft**: the dashboard records tenant, project slug, and owner metadata.
+2. **Namespace provisioning (cluster backends)**: on `POST /projects` with `KUBERNETES_APPLY=true`, Kubernetes automation creates `project-{slug}`, RBAC, network policy, quotas, nginx welcome page, and platform ingress. See [`README.md`](../README.md#project-auto-provision-on-k3s).
+3. **Repository provisioning**: the user or platform adds the project to GitLab/GitHub automation. The project enters `repository_provisioned` after the remote repository, branch protection, variables, and credentials exist.
+4. **Runner installation**: the runner authentication token is stored in the platform secret store, then used to install a dedicated runner pod or VM with the assigned project tag.
+5. **First pipeline**: the project includes the reusable GitLab CI template. The build job produces an artifact, the image job pushes to the project registry, and the deploy job replaces the welcome workload in `DIVBAND_NAMESPACE`.
 6. **Operate**: changes merge through protected branches and merge requests. Production deploys run only from the default branch.
 7. **Archive or delete**: disable CI, revoke project access tokens and deploy keys, pause or remove runners, retain audit data, and then archive or delete the repository according to retention policy.
 

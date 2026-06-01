@@ -48,6 +48,7 @@ import { KubernetesService } from './services/kubernetes.ts';
 import { RateLimitService } from './services/rate-limit.ts';
 import { PublishingService, type PublishingServiceOptions } from './services/publishing.ts';
 import { ProjectSecretService } from './services/secrets.ts';
+import { demoPassword } from './demo-seed.ts';
 import { createId, normalizeSlug, nowIso } from './utils.ts';
 
 interface RouteMatch {
@@ -61,6 +62,11 @@ interface CreateProjectBody {
   organizationId?: unknown;
 }
 
+interface UpdateProjectBody {
+  name?: unknown;
+  slug?: unknown;
+}
+
 interface AuthorizedProject {
   project: Project;
   membership: ProjectMembership;
@@ -72,6 +78,7 @@ export interface BackendServiceOptions extends PublishingServiceOptions {
   managedDnsPlatformIngressTarget?: string;
   managedDnsApexRecordType?: 'ALIAS' | 'ANAME' | 'A' | 'AAAA';
   requireEmailVerification?: boolean;
+  platformDomain?: string;
 }
 
 export class BackendService {
@@ -88,6 +95,7 @@ export class BackendService {
   private readonly secrets: ProjectSecretService;
   private readonly rateLimits: RateLimitService;
   private readonly requireEmailVerification: boolean;
+  private readonly platformDomain: string;
 
   constructor(private readonly store: BackendStore = defaultStore, options: BackendServiceOptions = {}) {
     this.auth = new AuthService(store);
@@ -97,6 +105,7 @@ export class BackendService {
     this.secrets = new ProjectSecretService(store);
     this.publishing = new PublishingService(store, options);
     this.requireEmailVerification = options.requireEmailVerification ?? true;
+    this.platformDomain = options.platformDomain?.trim() || process.env.PLATFORM_DOMAIN?.trim() || 'divband.com';
     this.managedDns = new ManagedDnsService(options.managedDnsProvider, {
       defaultTtlSeconds: options.managedDnsDefaultTtlSeconds,
       platformIngressTarget: options.managedDnsPlatformIngressTarget,
@@ -149,6 +158,12 @@ export class BackendService {
         return this.ok(this.authResponse(result));
       }
 
+      if (method === 'POST' && this.matches(route, 'auth', 'demo')) {
+        const result = this.loginDemoOwner();
+        this.audit.record(result.user.id, 'user.demo_logged_in', { email: result.user.email });
+        return this.ok(this.authResponse(result));
+      }
+
       if (method === 'POST' && this.matches(route, 'auth', 'logout')) {
         const actor = this.auth.authenticate(request.headers?.authorization ?? request.headers?.Authorization);
         const session = this.auth.revokeCurrentSession(actor);
@@ -179,6 +194,7 @@ export class BackendService {
           route.query.get('code') ?? '',
           route.query.get('state') ?? '',
           this.apiBaseUrl(),
+          this.publicOrigin(request),
         );
         const identity = this.auth.linkGitLabIdentity(result.userId, {
           provider: 'github',
@@ -191,10 +207,23 @@ export class BackendService {
         if (project && project.ownerId === result.userId && !project.repositoryUrl) {
           const user = this.store.users.get(result.userId);
           if (user) {
-            await this.createGitLabRepository(project, user);
+            try {
+              await this.createGitLabRepository(project, user);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Repository provisioning failed after GitHub authorization.';
+              return this.ok({
+                redirectTo: `/projects/${encodeURIComponent(project.id)}/repository?github_error=${encodeURIComponent(message)}`,
+                gitlabIdentity: this.redactGitLabIdentity(identity),
+              });
+            }
           }
         }
-        return this.ok({ redirectTo: project ? `/#gitlab-repository-status?projectId=${encodeURIComponent(project.id)}` : result.returnTo, gitlabIdentity: this.redactGitLabIdentity(identity) });
+        return this.ok({
+          redirectTo: project
+            ? `/projects/${encodeURIComponent(project.id)}/repository?notice=github_connected`
+            : result.returnTo,
+          gitlabIdentity: this.redactGitLabIdentity(identity),
+        });
       }
 
       if (this.isPublishingRoute(route)) {
@@ -273,9 +302,32 @@ export class BackendService {
 
       if (method === 'POST' && this.matches(route, 'auth', 'github', 'oauth', 'start')) {
         const body = this.optionalObject(request.body);
-        const returnTo = typeof body.returnTo === 'string' ? body.returnTo : '/#gitlab-repository-status';
+        const returnTo = typeof body.returnTo === 'string' ? body.returnTo : '/dashboard';
         const projectId = typeof body.projectId === 'string' ? body.projectId : undefined;
-        return this.ok(this.githubOAuth.start(user.id, this.apiBaseUrl(), returnTo, projectId));
+        const publicOrigin = typeof body.publicOrigin === 'string' ? body.publicOrigin : this.publicOrigin(request);
+        if (projectId) {
+          const linkedProject = this.store.projects.get(projectId);
+          if (!linkedProject || linkedProject.ownerId !== user.id) {
+            throw new Error('Project not found.');
+          }
+        }
+        return this.ok(this.githubOAuth.start(user.id, this.apiBaseUrl(), returnTo, projectId, publicOrigin));
+      }
+
+      if (method === 'GET' && this.matches(route, 'auth', 'github', 'status')) {
+        const identity = this.sourceControlIdentityForUser(user);
+        const configuration = this.githubOAuth.configuration(this.apiBaseUrl());
+        const serverReachable = await this.githubOAuth.checkServerReachable();
+        return this.ok({
+          configured: this.githubOAuth.configured(),
+          connected: Boolean(identity?.provider === 'github' && identity.accessToken),
+          username: identity?.provider === 'github' ? identity.username : undefined,
+          clientIdSource: configuration.clientIdSource,
+          clientIdPreview: configuration.clientIdPreview,
+          callbackUrl: configuration.callbackUrl,
+          usingCustomCredentials: this.githubOAuth.usingCustomCredentials(),
+          serverReachable,
+        });
       }
 
       if (method === 'GET' && this.matches(route, 'auth', 'github', 'repositories')) {
@@ -295,7 +347,9 @@ export class BackendService {
       }
 
       if (method === 'POST' && this.matches(route, 'projects')) {
-        return this.created({ project: this.createProject(user, this.requiredObject(request.body) as CreateProjectBody) }, 202);
+        const project = this.createProject(user, this.requiredObject(request.body) as CreateProjectBody);
+        await this.autoProvisionProjectIfEnabled(project, user);
+        return this.created({ project }, 202);
       }
 
       const projectId = route.segments[1];
@@ -308,7 +362,12 @@ export class BackendService {
 
         if (method === 'DELETE' && route.segments.length === 2) {
           const { project } = this.requireProject(projectId, actor, 'project:archive');
-          return this.ok({ project: this.archiveProject(project, user) });
+          return this.ok(await this.deleteProject(project, user));
+        }
+
+        if (method === 'PATCH' && route.segments.length === 2) {
+          const { project } = this.requireProject(projectId, actor, 'project:admin');
+          return this.ok({ project: this.updateProject(project, user, this.requiredObject(request.body) as UpdateProjectBody) });
         }
 
         if (method === 'GET' && this.matches(route, 'projects', projectId, 'status')) {
@@ -355,12 +414,23 @@ export class BackendService {
           if (this.gitlab.requiresLinkedIdentity()) {
             this.requireGitLabIdentity(user);
           }
-          return this.ok({ repository: await this.createGitLabRepository(project, user), project });
+          const body = this.optionalObject(request.body);
+          const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : undefined;
+          const repository = fullName
+            ? await this.linkGitLabRepository(project, user, fullName)
+            : await this.createGitLabRepository(project, user);
+          return this.ok({ repository, project });
         }
 
         if (method === 'POST' && this.matches(route, 'projects', projectId, 'kubernetes-namespace')) {
           const { project } = this.requireProject(projectId, actor, 'project:provision_kubernetes');
+          this.requireProjectRepository(project);
           return this.ok({ namespace: await this.provisionKubernetesNamespace(project, user), project });
+        }
+
+        if (method === 'POST' && this.matches(route, 'projects', projectId, 'workspace')) {
+          const { project } = this.requireProject(projectId, actor, 'project:read');
+          return this.ok(await this.openWorkspace(project, user));
         }
 
         if (method === 'POST' && this.matches(route, 'projects', projectId, 'platform-subdomain')) {
@@ -702,6 +772,26 @@ export class BackendService {
     return action === 'warn' || action === 'suspend' || action === 'unsuspend' || action === 'restrict_deployments';
   }
 
+  private loginDemoOwner(): { user: User; session: AuthSession; token: string; tokenType: 'Bearer' } {
+    if (['0', 'false', 'no', 'off'].includes((process.env.DIVBAND_SEED_DEMO_DATA ?? '').toLowerCase())) {
+      throw new Error('Demo login is disabled.');
+    }
+
+    const email = 'demo.owner@divband.test';
+    try {
+      return this.auth.login({ email, password: demoPassword });
+    } catch {
+      const registered = this.auth.register({
+        email,
+        name: 'Demo Project Owner',
+        username: 'demo-owner',
+        password: demoPassword,
+      });
+      this.ensurePersonalOrganization(registered.user);
+      return this.auth.login({ email, password: demoPassword });
+    }
+  }
+
   private createProject(user: User, body: CreateProjectBody): Project {
     const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : 'Untitled project';
     const slugSource = typeof body.slug === 'string' ? body.slug : name;
@@ -713,7 +803,9 @@ export class BackendService {
     const organization = typeof body.organizationId === 'string' ? this.requireOrganizationForUser(body.organizationId, user) : this.ensurePersonalOrganization(user).organization;
     this.requireTenantActive(organization);
     this.requireProjectQuota(organization);
-    const plan = createProjectLifecyclePlan(slug, `${organization.slug}/${user.id}`);
+    const username = this.resolveUsername(user);
+    const plan = createProjectLifecyclePlan(slug, `${organization.slug}/${user.id}`, username, this.platformDomain);
+    this.requireUniquePlatformHostname(plan.platformHostname);
     const timestamp = nowIso();
     const project: Project = {
       id: createId('project'),
@@ -725,6 +817,7 @@ export class BackendService {
       gitlabPath: plan.gitlabPath,
       namespace: plan.namespace,
       platformHostname: plan.platformHostname,
+      workspaceHostname: plan.workspaceHostname,
       runnerTag: plan.runnerTag,
       namespaceProvisioned: false,
       platformSubdomainAttached: false,
@@ -773,6 +866,23 @@ export class BackendService {
     const identity = this.sourceControlIdentityForUser(user);
     const repository = await this.gitlab.createRepository(project, this.secrets.list(project, { reveal: true }), identity);
     await this.gitlab.configureRunnerTag(project, identity);
+    return this.attachProjectRepository(project, user, repository, 'project.repository_created');
+  }
+
+  private async linkGitLabRepository(project: Project, user: User, fullName: string): Promise<unknown> {
+    const identity = this.sourceControlIdentityForUser(user);
+    const repository = await this.gitlab.linkGitHubRepository(project, fullName, identity);
+    await this.gitlab.configureRunnerTag(project, identity);
+    return this.attachProjectRepository(project, user, repository, 'project.repository_linked', { fullName });
+  }
+
+  private attachProjectRepository(
+    project: Project,
+    user: User,
+    repository: Awaited<ReturnType<GitLabService['createRepository']>>,
+    auditAction: 'project.repository_created' | 'project.repository_linked',
+    auditDetails: Record<string, unknown> = {},
+  ): unknown {
     project.repositoryUrl = repository.webUrl;
     project.repository = {
       provider: repository.provider === 'gitlab' ? 'gitlab' : 'github',
@@ -781,21 +891,187 @@ export class BackendService {
       cloneUrl: repository.cloneUrl,
       defaultBranch: repository.defaultBranch ?? 'main',
       connectedAt: nowIso(),
+      offline: repository.offline,
     };
     this.touch(project, 'repository_provisioned');
-    this.audit.record(user.id, 'project.repository_created', { path: repository.path }, project.id);
+    this.audit.record(user.id, auditAction, { path: repository.path, offline: repository.offline === true, ...auditDetails }, project.id);
     return repository;
   }
 
   private async provisionKubernetesNamespace(project: Project, user: User): Promise<unknown> {
-    const namespace = await this.kubernetes.provisionNamespace(project);
+    return this.bootstrapWelcomeSite(project, user);
+  }
+
+  private async autoProvisionProjectIfEnabled(project: Project, user: User): Promise<void> {
+    if (!this.shouldAutoProvisionProjects()) {
+      return;
+    }
+
+    try {
+      await this.bootstrapWelcomeSite(project, user);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.audit.record(user.id, 'project.auto_provision_failed', { error: message }, project.id);
+      console.error('[project.auto_provision]', message);
+    }
+  }
+
+  private shouldAutoProvisionProjects(): boolean {
+    const explicit = (process.env.DIVBAND_AUTO_PROVISION_PROJECTS ?? '').trim().toLowerCase();
+    if (['0', 'false', 'no', 'off'].includes(explicit)) {
+      return false;
+    }
+    if (['1', 'true', 'yes', 'on'].includes(explicit)) {
+      return this.kubernetes.applyEnabled() && !this.kubernetesConfigDisabled();
+    }
+    return this.kubernetes.applyEnabled() && !this.kubernetesConfigDisabled();
+  }
+
+  private kubernetesConfigDisabled(): boolean {
+    return ['disabled', 'off', 'none'].includes((process.env.KUBERNETES_CONFIG_MODE ?? process.env.KUBERNETES_MODE ?? '').toLowerCase());
+  }
+
+  private async bootstrapWelcomeSite(project: Project, user: User): Promise<unknown> {
+    if (project.namespaceProvisioned && project.platformSubdomainAttached) {
+      return {
+        name: project.namespace,
+        applied: false,
+        labels: {
+          'app.kubernetes.io/managed-by': 'divband',
+          'divband.io/project-id': project.id,
+          'divband.io/project-slug': project.slug,
+          'divband.io/tenant-id': project.organizationId,
+        },
+        manifests: '',
+      };
+    }
+
+    const namespace = await this.kubernetes.provisionWelcomeStack(project);
     project.namespaceProvisioned = true;
     this.touch(project, 'namespace_provisioned');
-    this.audit.record(user.id, 'project.kubernetes_namespace_provisioned', { namespace: namespace.name }, project.id);
+    this.audit.record(user.id, 'project.kubernetes_namespace_provisioned', { namespace: namespace.name, profile: 'welcome' }, project.id);
+
+    if (!project.deployments.some((deployment) => deployment.state === 'succeeded')) {
+      const deployment = this.deployments.trigger(project, 'welcome', 'welcome');
+      project.deployments.push(deployment);
+      this.deployments.report(project, {
+        deploymentId: deployment.id,
+        state: 'succeeded',
+        gitRef: 'welcome',
+        commitSha: 'welcome',
+        image: process.env.KUBERNETES_WELCOME_IMAGE?.trim() || 'nginx:1.27-alpine',
+        ingressHostname: project.platformHostname,
+        healthCheckUrl: `http://${project.platformHostname}/`,
+        logLine: 'Welcome site deployed automatically.',
+      });
+      this.touch(project, 'deployed');
+      this.audit.record(user.id, 'project.welcome_site_deployed', { deploymentId: deployment.id }, project.id);
+    }
+
+    if (!project.platformSubdomainAttached) {
+      project.platformSubdomainAttached = true;
+      this.touch(project);
+      this.audit.record(user.id, 'project.platform_subdomain_attached', { hostname: project.platformHostname, automatic: true }, project.id);
+    }
+
     return namespace;
   }
 
+  private async openWorkspace(project: Project, user: User): Promise<{ url: string; hostname: string; namespace: string; applied: boolean; mode: 'local' | 'kubernetes' }> {
+    const owner = this.store.users.get(project.ownerId);
+    const username = owner ? this.resolveUsername(owner) : this.resolveUsername(user);
+    if (!project.workspaceHostname) {
+      project.workspaceHostname = createProjectLifecyclePlan(project.slug, project.gitlabPath, username, this.platformDomain).workspaceHostname;
+      this.touch(project);
+    }
+
+    const kubernetesDisabled = ['disabled', 'off', 'none'].includes((process.env.KUBERNETES_CONFIG_MODE ?? '').toLowerCase());
+    const useLocalWorkspace = !this.kubernetes.applyEnabled() || kubernetesDisabled;
+    if (useLocalWorkspace) {
+      const url = `${this.apiBaseUrl().replace(/\/+$/, '')}/projects/${encodeURIComponent(project.id)}/workspace`;
+      this.audit.record(user.id, 'project.workspace_opened', { mode: 'local', url }, project.id);
+      return {
+        url,
+        hostname: project.workspaceHostname,
+        namespace: project.namespace,
+        applied: false,
+        mode: 'local',
+      };
+    }
+
+    const workspace = await this.kubernetes.provisionWorkspace(project);
+    this.audit.record(user.id, 'project.workspace_opened', { hostname: project.workspaceHostname }, project.id);
+    return {
+      url: `https://${project.workspaceHostname}`,
+      hostname: project.workspaceHostname,
+      namespace: project.namespace,
+      applied: workspace.applied,
+      mode: 'kubernetes',
+    };
+  }
+
+  private updateProject(project: Project, user: User, body: UpdateProjectBody): Project {
+    if (project.status !== 'draft' && typeof body.slug === 'string' && normalizeSlug(body.slug) !== project.slug) {
+      throw new Error('Project slug can only be changed while the project is still in draft status.');
+    }
+
+    if (typeof body.name === 'string' && body.name.trim()) {
+      project.name = body.name.trim();
+    }
+
+    const owner = this.store.users.get(project.ownerId) ?? user;
+    const username = this.resolveUsername(owner);
+    const nextSlug = typeof body.slug === 'string' && body.slug.trim() ? normalizeSlug(body.slug) : project.slug;
+    if (!nextSlug) {
+      throw new Error('Project slug is required.');
+    }
+
+    if (nextSlug !== project.slug) {
+      const plan = createProjectLifecyclePlan(nextSlug, project.gitlabPath.split('/').slice(0, -1).join('/') || username, username, this.platformDomain);
+      this.requireUniquePlatformHostname(plan.platformHostname, project.id);
+      project.slug = plan.slug;
+      project.gitlabPath = plan.gitlabPath;
+      project.namespace = plan.namespace;
+      project.platformHostname = plan.platformHostname;
+      project.workspaceHostname = plan.workspaceHostname;
+      project.runnerTag = plan.runnerTag;
+    }
+
+    this.touch(project);
+    this.audit.record(user.id, 'project.updated', { slug: project.slug, name: project.name }, project.id);
+    return project;
+  }
+
+  private resolveUsername(user: User): string {
+    if (user.username?.trim()) {
+      return user.username.trim().toLowerCase();
+    }
+
+    const githubIdentity = [...this.store.gitlabIdentityLinks.values()].find((identity) => identity.userId === user.id && identity.provider === 'github');
+    if (githubIdentity?.username) {
+      return githubIdentity.username.trim().toLowerCase();
+    }
+
+    return user.email.split('@')[0]?.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || user.id;
+  }
+
+  private requireUniquePlatformHostname(platformHostname: string, excludeProjectId?: string): void {
+    const collision = [...this.store.projects.values()].find(
+      (project) => project.platformHostname === platformHostname && project.id !== excludeProjectId && project.status !== 'archived',
+    );
+    if (collision) {
+      throw new Error(`The hostname ${platformHostname} is already assigned to another project.`);
+    }
+  }
+
   private attachPlatformSubdomain(project: Project, user: User): string {
+    if (!project.namespaceProvisioned) {
+      throw new Error('Provision Kubernetes infrastructure before attaching your live URL.');
+    }
+    const latestDeployment = project.deployments.at(-1);
+    if (!latestDeployment || latestDeployment.state !== 'succeeded') {
+      throw new Error('Complete a successful deployment before attaching your live URL.');
+    }
     project.platformSubdomainAttached = true;
     this.touch(project);
     this.audit.record(user.id, 'project.platform_subdomain_attached', { hostname: project.platformHostname }, project.id);
@@ -1278,11 +1554,88 @@ export class BackendService {
     return environmentVariables;
   }
 
-  private archiveProject(project: Project, user: User): Project {
-    project.archivedAt = nowIso();
-    this.touch(project, 'archived');
-    this.audit.record(user.id, 'project.archived', {}, project.id);
-    return project;
+  private async deleteProject(project: Project, user: User): Promise<{
+    deleted: true;
+    projectId: string;
+    slug: string;
+    kubernetes: { deprovisioned: boolean; namespaceDeleted: boolean };
+    repository: { deleted: boolean; path?: string };
+  }> {
+    const identity = this.sourceControlIdentityForUser(user);
+    let kubernetesDeprovisioned = false;
+    let namespaceDeleted = false;
+
+    if (project.namespaceProvisioned) {
+      const deprovisioned = await this.kubernetes.deprovisionProject(project);
+      kubernetesDeprovisioned = deprovisioned.applied;
+      if (this.shouldDeleteSharedNamespace(project)) {
+        const namespace = await this.kubernetes.deprovisionNamespace(project);
+        namespaceDeleted = namespace.applied;
+      }
+    }
+
+    let repositoryDeleted = false;
+    let repositoryPath = project.repository?.path ?? project.gitlabPath;
+    if (project.repositoryUrl || project.repository) {
+      try {
+        const repository = await this.gitlab.deleteRepository(project, identity);
+        repositoryDeleted = repository.deleted;
+        repositoryPath = repository.path ?? repositoryPath;
+      } catch (error) {
+        this.audit.record(user.id, 'project.repository_delete_failed', {
+          path: repositoryPath,
+          reason: error instanceof Error ? error.message : 'Repository deletion failed.',
+        }, project.id);
+      }
+    }
+
+    this.purgeProjectRecords(project.id);
+    this.audit.record(user.id, 'project.deleted', {
+      slug: project.slug,
+      namespace: project.namespace,
+      repositoryPath,
+      kubernetesDeprovisioned,
+      namespaceDeleted,
+      repositoryDeleted,
+    }, project.id);
+
+    return {
+      deleted: true,
+      projectId: project.id,
+      slug: project.slug,
+      kubernetes: { deprovisioned: kubernetesDeprovisioned, namespaceDeleted },
+      repository: { deleted: repositoryDeleted, path: repositoryPath },
+    };
+  }
+
+  private shouldDeleteSharedNamespace(project: Project): boolean {
+    return ![...this.store.projects.values()].some(
+      (candidate) => candidate.id !== project.id && candidate.namespace === project.namespace,
+    );
+  }
+
+  private purgeProjectRecords(projectId: string): void {
+    this.store.projects.delete(projectId);
+    for (const [membershipId, membership] of this.store.projectMemberships.entries()) {
+      if (membership.projectId === projectId) {
+        this.store.projectMemberships.delete(membershipId);
+      }
+    }
+    for (const [secretKey, secret] of this.store.projectEnvironmentSecrets.entries()) {
+      if (secret.projectId === projectId) {
+        this.store.projectEnvironmentSecrets.delete(secretKey);
+      }
+    }
+    for (const [tokenId, apiToken] of this.store.apiTokens.entries()) {
+      if (apiToken.projectId === projectId) {
+        this.store.apiTokens.delete(tokenId);
+      }
+    }
+    for (const [changeRequestId, changeRequest] of this.store.aiChangeRequests.entries()) {
+      if (changeRequest.projectId === projectId) {
+        this.store.aiChangeRequests.delete(changeRequestId);
+      }
+    }
   }
 
   private requireProject(projectId: string, actor: AuthActor, permission: ProjectPermission): AuthorizedProject {
@@ -1355,6 +1708,19 @@ export class BackendService {
       throw new Error('Link a source-control identity before provisioning or accessing generated repositories.');
     }
     return link;
+  }
+
+  private requireProjectRepository(project: Project): void {
+    if (!project.repositoryUrl) {
+      throw new Error('Connect GitHub and create a project repository before continuing.');
+    }
+  }
+
+  private requireProjectInfrastructure(project: Project): void {
+    this.requireProjectRepository(project);
+    if (!project.namespaceProvisioned) {
+      throw new Error('Provision Kubernetes infrastructure before deploying or going live.');
+    }
   }
 
   private sourceControlIdentityForUser(user: User): GitLabIdentityLink | undefined {
@@ -1473,6 +1839,24 @@ export class BackendService {
     return process.env.API_BASE_URL?.trim() || 'http://localhost:3000';
   }
 
+  private publicOrigin(request: ApiRequest): string | undefined {
+    const headerOrigin = request.headers?.['x-divband-public-origin'] ?? request.headers?.['X-Divband-Public-Origin'];
+    if (typeof headerOrigin === 'string' && headerOrigin.trim()) {
+      return headerOrigin.trim();
+    }
+    const forwardedHost = request.headers?.['x-forwarded-host'] ?? request.headers?.['X-Forwarded-Host'];
+    const forwardedProto = request.headers?.['x-forwarded-proto'] ?? request.headers?.['X-Forwarded-Proto'] ?? 'http';
+    if (typeof forwardedHost === 'string' && forwardedHost.trim()) {
+      return `${forwardedProto}://${forwardedHost.split(',')[0]?.trim()}`;
+    }
+    const host = request.headers?.host ?? request.headers?.Host;
+    if (typeof host === 'string' && host.trim()) {
+      const protocol = host.includes('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
+      return `${protocol}://${host.trim()}`;
+    }
+    return undefined;
+  }
+
   private domainStatusResponse(domain: ProjectDomain): Pick<ProjectDomain, 'id' | 'hostname' | 'dnsMode' | 'status' | 'verificationStatus' | 'assignedNameservers' | 'delegationStatus' | 'certificateStatus' | 'failureReason'> & { mode: DomainDnsMode; dnsSetup: DelegatedDnsSetup } {
     return {
       id: domain.id,
@@ -1588,6 +1972,7 @@ export class BackendService {
   }
 
   private requireDeploymentAllowed(project: Project): void {
+    this.requireProjectInfrastructure(project);
     const organization = this.store.organizations.get(project.organizationId);
     if (!organization) {
       throw new Error('Organization not found.');
@@ -1726,7 +2111,7 @@ export class BackendService {
       throw new Error('Registration requires email, name, and password.');
     }
 
-    return { email: record.email, name: record.name, password: record.password, inviteCode: typeof record.inviteCode === 'string' ? record.inviteCode : undefined };
+    return { email: record.email, name: record.name, password: record.password, username: typeof record.username === 'string' ? record.username : '', inviteCode: typeof record.inviteCode === 'string' ? record.inviteCode : undefined };
   }
 
   private loginInput(body: unknown): LoginInput {

@@ -195,26 +195,28 @@ Agents use git like any developer. The platform owns repo creation and CI wiring
 
 ## Kubernetes and ingress
 
-When namespace is provisioned (`POST /projects/{id}/kubernetes-namespace`), the backend renders and applies templates from `infra/k8s/base/`, including:
+When a project is created on a cluster-backed backend (`KUBERNETES_APPLY=true`), the backend **automatically** renders and applies the **welcome profile** from `infra/k8s/base/`. The same bundle is available through `POST /projects/{id}/kubernetes-namespace` for idempotent retries.
 
 | Template | Purpose |
 | --- | --- |
 | `tenant-namespace.yaml` | Isolated namespace `project-{slug}` |
 | `network-policy.yaml`, `rbac.yaml` | Tenant isolation |
-| `*-deployment.yaml` | Workload (frontend/backend/static) |
-| `ingress.yaml` | Host `{slug}.divband.ir` → service → pods |
-| `Certificate` | TLS (can be pending in local MVP) |
+| `welcome-deployment.yaml` | Default nginx welcome page until CI deploys the real app |
+| `ingress-platform.yaml` | Host `{slug}.{user}.{platformDomain}` → welcome service |
+| `Certificate` | TLS via cert-manager (may stay pending until DNS is configured) |
 
-Traffic path:
+Optional full-stack templates (`frontend-deployment.yaml`, `backend-deployment.yaml`, `static-site-deployment.yaml`, `ingress.yaml`, `external-secret.yaml`) remain in the bundle for CI-driven or operator-driven upgrades.
+
+Traffic path after project create:
 
 ```text
-Internet → Ingress (Host: my-site.divband.ir)
-         → Service (public-web)
-         → Deployment (app container)
+Internet → Ingress (Host: my-site.user.divband.com)
+         → Service (welcome)
+         → Deployment (nginx welcome page)
          in namespace: project-my-site
 ```
 
-Enable real apply with `KUBERNETES_APPLY=true` and a reachable cluster (`kubectl` on PATH). See `apps/backend/src/services/kubernetes.ts`.
+Enable real apply with `KUBERNETES_APPLY=true`, `KUBERNETES_CONFIG_MODE=kubeconfig`, and `kubectl` on the backend container PATH. Auto-provision on create is controlled by `DIVBAND_AUTO_PROVISION_PROJECTS` (default: on when apply is enabled). See `apps/backend/src/services/kubernetes.ts`.
 
 **Deploy loop gap to close:** provisioned repos need a **CI template** that builds on push, updates the K8s deployment in `project-{slug}`, and reports status to `POST /projects/{id}/deployments/report`.
 
@@ -278,18 +280,22 @@ flowchart LR
 | Domain management | Yes (API + page) | Real DNS/TLS optional for local |
 | Git repo provision | Partial (GitHub OAuth, provision endpoint) | CI template wired into new repos |
 | Agent git push/pull | Indirect (clone URL + token) | Deploy keys / token docs for agents |
-| K8s namespace | Yes (templates + optional apply) | Turn on `KUBERNETES_APPLY`, real cluster |
-| Deploy to K8s | Partial (deployment records) | CI actually updates workloads |
-| Ingress mapping | Yes (in `infra/k8s/base/ingress.yaml`) | End-to-end test with live cluster |
+| K8s namespace + welcome site | Yes (auto on `POST /projects` when `KUBERNETES_APPLY=true`) | Redeploy backend image with `kubectl` in container |
+| Deploy to K8s | Partial (welcome nginx live; CI replaces it) | CI actually updates workloads |
+| Ingress mapping | Yes (`ingress-platform.yaml` + welcome service) | End-to-end test with live cluster DNS |
 
 ## Related documents
 
 | Document | Purpose |
 | --- | --- |
-| `docs/product.md` | Full product vision, backlog, and release readiness |
-| `docs/architecture.md` | Monorepo layout, services, and request flows |
-| `docs/local-mvp.md` | Run backend/frontend locally with mocked deps |
-| `docs/agent-instant-hosting.md` | Publish API contract for agents |
-| `docs/gitlab.md` | GitLab integration notes |
-| `infra/k8s/base/` | Tenant namespace, deployment, and ingress templates |
-| `infra/gitlab/ci-templates/` | CI templates to embed in provisioned repos |
+| [`docs/product.md`](product.md) | Full product vision, backlog, and release readiness |
+| [`docs/architecture.md`](architecture.md) | Monorepo layout, services, and request flows |
+| [`docs/local-mvp.md`](local-mvp.md) | Run backend/frontend locally with mocked deps |
+| [`docs/development-vs-production.md`](development-vs-production.md) | Local npm scripts vs Ansible/k3s deploy |
+| [`docs/operations.md`](operations.md) | Operator runbook for project → live hostname |
+| [`README.md`](../README.md#project-auto-provision-on-k3s) | Auto-provision summary |
+| [`docs/agent-instant-hosting.md`](agent-instant-hosting.md) | Publish API contract for agents |
+| [`docs/gitlab.md`](gitlab.md) | GitLab integration notes |
+| [`docs/deployments.md`](deployments.md) | CI deploy and welcome replacement |
+| [`infra/k8s/README.md`](../infra/k8s/README.md) | Welcome profile and tenant templates |
+| [`infra/gitlab/ci-templates/`](../infra/gitlab/ci-templates/) | CI templates to embed in provisioned repos |

@@ -129,10 +129,12 @@ Production backend configuration (Postgres, S3, kubeconfig, secrets) is document
 
 Separate from control-plane bootstrap:
 
-1. User creates a project in the dashboard (control plane API).
-2. Backend provisions GitLab/GitHub repo, namespace, routes (when integrations are enabled).
-3. **GitLab CI** from [`infra/gitlab/ci-templates/`](../infra/gitlab/ci-templates/) builds and deploys into the project namespace.
+1. User creates a project in the dashboard (`POST /projects`).
+2. When `KUBERNETES_APPLY=true` (set by Ansible on k3s/VPS backends), the backend **automatically** provisions `project-{slug}` with a nginx welcome page, ingress, and platform hostname — no manual namespace button required.
+3. User optionally connects GitHub/GitLab and pushes code; **GitLab CI** from [`infra/gitlab/ci-templates/`](../infra/gitlab/ci-templates/) builds and deploys into the same namespace, replacing the welcome site.
 4. Deployment status is reported back to the API (see [`deployments.md`](./deployments.md)).
+
+Local `npm run dev:mvp` does not run step 2; Kubernetes stays mocked in-process.
 
 That loop assumes platform bootstrap (Flow 2 control plane) is already complete.
 
@@ -157,7 +159,9 @@ That loop assumes platform bootstrap (Flow 2 control plane) is already complete.
 | [`infrastructure-orchestration.md`](./infrastructure-orchestration.md) | Ansible vs Terraform ownership and bootstrap order |
 | [`vm-reference-architecture.md`](./vm-reference-architecture.md) | VM topology and Ansible inventory groups |
 | [`deployments.md`](./deployments.md) | GitLab-driven tenant deploy and status reporting |
-| [`operations.md`](./operations.md) | Production operational contracts |
+| [`operations.md`](./operations.md) | Production operational contracts and MVP provisioning runbook |
+| [`README.md`](../README.md#project-auto-provision-on-k3s) | Automatic tenant provisioning on k3s |
+| [`infra/k8s/README.md`](../infra/k8s/README.md) | Welcome profile and tenant K8s templates |
 | [`../infra/ansible/README.md`](../infra/ansible/README.md) | k3s bootstrap, inventory, variables |
 | [`../apps/backend/PRODUCTION.md`](../apps/backend/PRODUCTION.md) | Durable persistence and object storage |
 

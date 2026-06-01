@@ -39,6 +39,12 @@ COPY --from=build /workspace/apps/backend/openapi.yaml apps/backend/openapi.yaml
 COPY --from=build /workspace/packages/auth/src packages/auth/src
 COPY infra/k8s/base infra/k8s/base
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl \
+  && chmod +x /usr/local/bin/kubectl \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /app/apps/backend/data && chown -R node:node /app
 USER node
 

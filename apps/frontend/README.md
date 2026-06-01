@@ -1,6 +1,8 @@
 # divband frontend
 
-The frontend package now ships a minimal static HTML application around the existing framework-neutral dashboard module. It mounts `mountDashboard` from `src/dashboard.ts`, applies production-ready CSS, and keeps the dashboard API client contract unchanged.
+The frontend package ships a Next.js app (App Router) with an embedded API route that loads `BackendService` in-process for local and VPS dev. The dashboard module in `src/dashboard.ts` remains the framework-neutral controller for auth, projects, and lifecycle actions.
+
+Related docs: [`docs/local-mvp.md`](../docs/local-mvp.md), [`docs/development-vs-production.md`](../docs/development-vs-production.md), [`apps/backend/README.md`](../apps/backend/README.md), [`README.md`](../README.md#project-auto-provision-on-k3s).
 
 Implemented dashboard pages:
 
@@ -17,7 +19,8 @@ Implemented dashboard pages:
 
 `src/dashboard.ts` includes:
 
-- `DivbandApiClient`, a backend API client for auth, projects, GitLab repository provisioning, namespace provisioning, platform subdomains, custom domains, deployments, environment variables, logs, and preview/mock AI change requests.
+- `DivbandApiClient`, a backend API client for auth, projects, GitLab repository provisioning, namespace provisioning (retry/idempotent), platform subdomains, custom domains, deployments, environment variables, logs, and preview/mock AI change requests.
+- On k3s/VPS backends, namespace provisioning and welcome-site deploy typically complete automatically when the user creates a project; dashboard buttons for manual provision remain as retry paths.
 - `DashboardController` and `mountDashboard`, which wire forms/buttons to the backend API, store the auth token, load page-specific project data, and re-render after actions.
 - Dashboard page metadata for routing/navigation.
 - Lifecycle state labels for Created, Repository provisioned, Namespace provisioned, Building, Deployed, Domain pending verification, Domain active, and Failed.
@@ -31,13 +34,15 @@ From the repository root, install workspace dependencies once:
 npm install
 ```
 
-Start the frontend dev server:
+From the repository root, use the integrated dev path (recommended):
 
 ```sh
-npm run dev --workspace @divband/frontend
+npm run dev:mvp
 ```
 
-Build or preview the production bundle:
+This starts Next.js on port 3000 with the API at `/api/*`. Do not run `dev:backend` and `dev:frontend` simultaneously — both use port 3000.
+
+Legacy static build (optional):
 
 ```sh
 npm run build --workspace @divband/frontend

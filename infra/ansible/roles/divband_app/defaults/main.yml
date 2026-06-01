@@ -47,3 +47,4 @@ divband_app_env:
   KUBERNETES_MODE: kubeconfig
   KUBERNETES_CONFIG_MODE: kubeconfig
   KUBECONFIG: "{{ divband_kubeconfig_mount_path }}"
+  DIVBAND_AUTO_PROVISION_PROJECTS: "true"

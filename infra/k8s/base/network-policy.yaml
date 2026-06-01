@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID
@@ -23,7 +23,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-public-ingress
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID
@@ -44,7 +44,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-system
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
           port: REPLACE_WITH_SERVICE_PORT
@@ -53,7 +53,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID
@@ -86,7 +86,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-approved-platform-egress
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID

@@ -172,7 +172,13 @@ runnerTag         → divband-{slug}
 
 Status progresses through: `draft` → `repository_provisioned` → `namespace_provisioned` → `building` → `deployed` → domain states (`domain_pending_verification`, `domain_active`) or `failed` / `archived`.
 
-Required provisioning steps: create GitLab project, configure runner tag, provision Kubernetes namespace, apply quota/RBAC/network policy, attach platform subdomain, run initial deployment.
+Required provisioning steps when Kubernetes apply is enabled:
+
+1. **Automatic on `POST /projects`:** provision namespace `project-{slug}`, apply the welcome stack (nginx + ingress), record a successful welcome deployment, and attach the platform hostname.
+2. **Optional follow-up:** create GitLab/GitHub repository, configure runner tag.
+3. **Later:** GitLab CI replaces the welcome page with the customer's application in the same namespace.
+
+Manual retry endpoints remain available: `POST /projects/{id}/kubernetes-namespace` (idempotent welcome reprovision) and `POST /projects/{id}/platform-subdomain` (when a later deployment succeeds outside the automatic path).
 
 ## Frontend (`apps/frontend`)
 
@@ -234,14 +240,18 @@ Locally, static sites are served by `server.ts` via `StaticServingService`; use 
 
 ## Provisioning flow
 
-1. User creates a project in the dashboard.
+1. User creates a project in the dashboard (`POST /projects`).
 2. Backend stores project metadata and validates the globally unique slug.
-3. Backend creates a GitLab project under the owning user or organization path (or a GitHub repository when `SOURCE_CONTROL_PROVIDER=github`).
-4. Backend provisions a Kubernetes namespace named `project-{slug}`.
-5. Backend applies quota, RBAC, network policy, service account, deployment, service, and route templates from `infra/k8s/base/`.
-6. Backend attaches the platform hostname `{slug}.divband.ir`.
-7. GitLab CI builds and deploys the first version using the project runner tag.
-8. User can add custom domains after DNS ownership verification succeeds.
+3. When `KUBERNETES_APPLY=true` and `DIVBAND_AUTO_PROVISION_PROJECTS` is not disabled, the backend automatically:
+   - provisions Kubernetes namespace `project-{slug}`;
+   - applies quota, RBAC, network policy, a nginx **welcome deployment**, service, and platform ingress from `infra/k8s/base/` (`welcome-deployment.yaml`, `ingress-platform.yaml`);
+   - records a successful welcome deployment;
+   - attaches the platform hostname `{slug}.{username}.{platformDomain}`.
+4. Backend creates a GitLab project or GitHub repository when the user connects source control (`POST /projects/{id}/gitlab-repository` or `…/github-repository`).
+5. GitLab CI builds and deploys the customer's application, replacing the welcome page in the same namespace.
+6. User can add custom domains after DNS ownership verification succeeds.
+
+Local development (`npm run dev:mvp`) skips step 3 because `KUBERNETES_CONFIG_MODE=disabled` and `KUBERNETES_APPLY` is off.
 
 ## Infrastructure
 
@@ -279,16 +289,32 @@ npm run dev:frontend   # Next.js on :3000
 
 Local MVP uses in-memory state, mocked Kubernetes/GitLab/DNS/certificates, and seeds demo users when `DIVBAND_SEED_DEMO_DATA=1`. Run `npm test` for typecheck and backend smoke tests.
 
+On k3s/VPS backends with `KUBERNETES_APPLY=true`, project creation auto-provisions the welcome stack — see [`README.md`](../README.md#project-auto-provision-on-k3s).
+
 ## Implementation maturity
 
 The repository is a **platform skeleton with working local flows**, not a fully wired production deployment.
 
-| Working locally | Still skeleton or TODO |
-| --- | --- |
-| Auth, projects, deployments (mock CI) | Real GitLab/Kubernetes apply in production |
-| GitHub OAuth and repository provisioning | Production DNS/TLS automation |
-| In-memory static publish loop | Durable Postgres as default in production |
-| Dashboard for core journeys | Billing, abuse controls, production AI assistant |
-| Kubernetes, Ansible, and Terraform templates | End-to-end production wiring |
+| Working locally | Working on k3s/VPS (when bootstrapped) | Still skeleton or TODO |
+| --- | --- | --- |
+| Auth, projects, deployments (mock CI) | Auto welcome stack on project create | Production DNS/TLS for all tenant hostnames |
+| GitHub OAuth and repository provisioning | `kubectl apply` via backend with mounted kubeconfig | CI templates wired into every new repo |
+| In-memory static publish loop | Platform ingress + cert-manager add-ons (Ansible) | Billing, abuse controls, production AI assistant |
+| Dashboard for core journeys | | Durable Postgres as default everywhere |
 
-Detailed capability status and backlog items are tracked in `docs/product.md`.
+Detailed capability status and backlog items are tracked in [`docs/product.md`](product.md).
+
+## Related documentation
+
+| Topic | Document |
+| --- | --- |
+| Product source of truth | [`product.md`](product.md) |
+| MVP scope | [`mvp-scope.md`](mvp-scope.md) |
+| Local vs production | [`development-vs-production.md`](development-vs-production.md), [`local-mvp.md`](local-mvp.md) |
+| Operator runbook | [`operations.md`](operations.md) |
+| Tenancy model | [`tenancy.md`](tenancy.md) |
+| Bootstrap ownership | [`infrastructure-orchestration.md`](infrastructure-orchestration.md) |
+| K8s templates | [`infra/k8s/README.md`](../infra/k8s/README.md) |
+| Ansible bootstrap | [`infra/ansible/README.md`](../infra/ansible/README.md) |
+| CI deploy loop | [`deployments.md`](deployments.md), [`gitlab.md`](gitlab.md) |
+| Auto-provision entry | [`README.md`](../README.md#project-auto-provision-on-k3s) |

@@ -90,6 +90,21 @@ allow `PUT` from the frontend origin and expose the checksum metadata headers:
 ]
 ```
 
+## Kubernetes tenant auto-provision
+
+On k3s/VPS control planes, configure the backend to apply tenant manifests when users create projects:
+
+| Variable | Production example | Notes |
+| --- | --- | --- |
+| `KUBERNETES_CONFIG_MODE` | `kubeconfig` or `in_cluster` | `disabled` for local dev only |
+| `KUBERNETES_APPLY` | `true` | Backend runs `kubectl apply` for tenant manifests |
+| `KUBERNETES_TEMPLATE_DIR` | `/app/infra/k8s/base` | Mounted in the backend container image |
+| `DIVBAND_AUTO_PROVISION_PROJECTS` | `true` | Set `0`/`false` to disable auto welcome stack on `POST /projects` |
+| `KUBERNETES_WELCOME_IMAGE` | `nginx:1.27-alpine` | Default welcome page container |
+| `CERT_MANAGER_CLUSTER_ISSUER` | `letsencrypt-prod` | Rendered into tenant ingress/certificate templates |
+
+Ansible sets these via [`infra/ansible/roles/divband_app/defaults/main.yml`](../infra/ansible/roles/divband_app/defaults/main.yml). See [`README.md`](../../README.md#project-auto-provision-on-k3s) and [`infra/k8s/README.md`](../../infra/k8s/README.md).
+
 ## Production startup example
 
 ```sh
@@ -98,7 +113,10 @@ PUBLIC_SITE_DOMAIN=sites.example.com \
 UPLOAD_DOMAIN=uploads.example.com \
 DATABASE_URL=postgresql://divband_backend:change-me@postgres.example.com:5432/divband_backend?sslmode=require \
 GITLAB_URL=https://gitlab.com \
-KUBERNETES_CONFIG_MODE=in_cluster \
+KUBERNETES_CONFIG_MODE=kubeconfig \
+KUBERNETES_APPLY=true \
+DIVBAND_AUTO_PROVISION_PROJECTS=true \
+KUBERNETES_TEMPLATE_DIR=/app/infra/k8s/base \
 OBJECT_STORAGE_PROVIDER=s3 \
 OBJECT_STORAGE_BUCKET=divband-sites-prod \
 OBJECT_STORAGE_REGION=us-east-1 \
