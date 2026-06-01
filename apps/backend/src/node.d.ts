@@ -100,6 +100,13 @@ declare module 'node:dgram' {
   };
 }
 
+declare module 'node:dns' {
+  const dns: {
+    setDefaultResultOrder(order: 'ipv4first' | 'verbatim' | 'ipv6first'): void;
+  };
+  export default dns;
+}
+
 declare module 'node:dns/promises' {
   export class Resolver {
     constructor(options?: { timeout?: number; tries?: number });
