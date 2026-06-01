@@ -237,6 +237,9 @@ Optional GitHub Actions variables:
 | `DIVBAND_API_BASE_URL` | `http://185.204.170.33/api` |
 | `DIVBAND_PUBLIC_SITE_DOMAIN` | `185.204.170.33.nip.io` |
 | `DIVBAND_UPLOAD_DOMAIN` | `uploads.185.204.170.33.nip.io` |
+| `CERT_MANAGER_ACME_EMAIL` | `admin@divband.com` |
+| `CERT_MANAGER_CLUSTER_ISSUER` | `letsencrypt-staging` |
+| `CERT_MANAGER_ACME_SERVER` | `https://acme-staging-v02.api.letsencrypt.org/directory` |
 | `CLUSTER_REGISTRY_ENDPOINT` | `localhost:30500` |
 
 ### Switch the VPS deploy to `divband.com`
@@ -265,6 +268,7 @@ DIVBAND_PUBLIC_HOSTNAME=divband.com \
 DIVBAND_API_BASE_URL=https://divband.com/api \
 DIVBAND_PUBLIC_SITE_DOMAIN=divband.com \
 DIVBAND_UPLOAD_DOMAIN=uploads.divband.com \
+CERT_MANAGER_ACME_EMAIL=admin@divband.com \
 make configure-github-actions
 ```
 
@@ -275,6 +279,7 @@ gh variable set DIVBAND_PUBLIC_HOSTNAME --body divband.com
 gh variable set DIVBAND_API_BASE_URL --body https://divband.com/api
 gh variable set DIVBAND_PUBLIC_SITE_DOMAIN --body divband.com
 gh variable set DIVBAND_UPLOAD_DOMAIN --body uploads.divband.com
+gh variable set CERT_MANAGER_ACME_EMAIL --body admin@divband.com
 ```
 
 Finally rerun the `Deploy VPS` workflow from GitHub Actions, or push to `main`.
