@@ -51,10 +51,27 @@
       ]
     },
     {
+      "id": "k8s_operator_access",
+      "title": "Verify kubectl access to k3s",
+      "owner": "kubectl",
+      "depends_on": ["k8s_control_plane"],
+      "optional": false,
+      "command": "scripts/kubectl-k3s.sh get nodes -o wide",
+      "notes": "Runs after k3s creates and Ansible fetches infra/ansible/artifacts/kubeconfig. This is the operator hand-off before add-ons and project auto-provisioning.",
+      "probes": [
+        {
+          "id": "k8s_nodes",
+          "type": "kubectl",
+          "kubeconfig": "infra/ansible/artifacts/kubeconfig",
+          "args": ["get", "nodes", "-o", "wide"]
+        }
+      ]
+    },
+    {
       "id": "load_balancer",
       "title": "Configure external load balancers",
       "owner": "ansible",
-      "depends_on": ["k8s_control_plane"],
+      "depends_on": ["k8s_operator_access"],
       "optional": true,
       "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit load_balancers",
       "notes": "Skip with status skipped when inventory has no load_balancers group"
@@ -63,7 +80,7 @@
       "id": "k8s_workers",
       "title": "Join Kubernetes workers",
       "owner": "ansible",
-      "depends_on": ["container_runtime", "k8s_control_plane"],
+      "depends_on": ["container_runtime", "k8s_operator_access"],
       "optional": true,
       "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit k8s_workers",
       "notes": "Skip with status skipped for single-node labs"
@@ -72,7 +89,7 @@
       "id": "k8s_platform_addons_ansible",
       "title": "Install cluster platform add-ons (Ansible)",
       "owner": "ansible",
-      "depends_on": ["k8s_control_plane"],
+      "depends_on": ["k8s_operator_access"],
       "optional": false,
       "profile": "vm_ansible",
       "command": "ansible-playbook -i infra/ansible/inventory.yml infra/ansible/playbooks/site.yml --limit 'k8s_control_plane[0]'",
@@ -90,7 +107,7 @@
       "id": "k8s_platform_addons_terraform",
       "title": "Install cluster platform add-ons (Terraform)",
       "owner": "terraform",
-      "depends_on": ["k8s_control_plane"],
+      "depends_on": ["k8s_operator_access"],
       "optional": false,
       "profile": "managed_terraform_k8s",
       "working_dir": "infra/terraform/environments/production",
@@ -184,7 +201,7 @@
       "title": "Platform bootstrap complete",
       "owner": "verify",
       "depends_on": [
-        "k8s_control_plane",
+        "k8s_operator_access",
         "gitlab_server",
         "gitlab_catalog_terraform",
         "divband_control_plane"

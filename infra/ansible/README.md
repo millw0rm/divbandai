@@ -373,6 +373,32 @@ Use that file for three hand-offs:
 
 Do not commit collected kubeconfigs. Treat `infra/ansible/artifacts/` as an operator workstation output directory.
 
+### Operator kubectl access
+
+The repository includes a thin kubectl wrapper that always targets the collected
+k3s artifact:
+
+```sh
+make kubectl-install
+make kube ARGS="get nodes -o wide"
+make kube ARGS="-n divband-system get deploy,pods,ingress"
+```
+
+This command is the explicit hand-off that happens after the k3s control plane
+is created and before platform add-ons or per-project resources are expected.
+It uses local `kubectl` when available, or the repo-local `.tools/kubectl`
+installed by `make kubectl-install`. The backend container has its own kubectl
+for automatic project provisioning.
+
+After creating a project, verify the welcome package with:
+
+```sh
+make kube-check PROJECT_SLUG=my-project
+```
+
+That checks the control-plane access, ingress/cert-manager/backend hand-off,
+and `project-my-project` resources (`deploy`, `svc`, `ingress`, and `pods`).
+
 ## Expected post-install checks
 
 Run these validation commands after the playbook completes:

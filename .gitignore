@@ -7,6 +7,7 @@ apps/**/data/
 .env.*
 !.env.local.example
 .secrets/
+.tools/
 infra/ansible/inventory.yml
 infra/ansible/artifacts/
 infra/orchestration/state.json
