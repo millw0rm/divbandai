@@ -1,4 +1,7 @@
 import type { AiChangeRequest, AiPatchProposal, EnvironmentVariable, GitLabIdentityLink, Project } from '../models.ts';
+import dns from 'node:dns';
+
+dns.setDefaultResultOrder('ipv4first');
 
 export type SourceControlProvider = 'gitlab' | 'github';
 
@@ -8,6 +11,7 @@ export interface GitLabRepository {
   cloneUrl: string;
   provider?: SourceControlProvider;
   defaultBranch?: string;
+  offline?: boolean;
 }
 
 export interface SourceControlRepositorySummary {
@@ -177,6 +181,30 @@ export class GitLabService {
     };
   }
 
+  async deleteRepository(project: Project, identity?: GitLabIdentityLink): Promise<{ deleted: boolean; path?: string }> {
+    if (this.provider === 'github') {
+      const token = this.gitHubTokenFor(identity);
+      if (!token) {
+        this.githubReposByProjectId.delete(project.id);
+        return { deleted: false, path: project.repository?.path ?? project.gitlabPath };
+      }
+
+      const repo = await this.githubRepositoryFor(project, identity);
+      await this.gitHubRequest(`/repos/${repo.owner}/${repo.repo}`, { method: 'DELETE' }, token);
+      this.githubReposByProjectId.delete(project.id);
+      return { deleted: true, path: repo.fullName };
+    }
+
+    if (!this.gitLabToken) {
+      return { deleted: false, path: project.repository?.path ?? project.gitlabPath };
+    }
+
+    const projectId = await this.gitLabProjectId(project);
+    await this.gitLabRequest(`/projects/${projectId}`, { method: 'DELETE' });
+    this.projectIdsByPath.delete(project.gitlabPath);
+    return { deleted: true, path: project.gitlabPath };
+  }
+
   async configureRunnerTag(project: Project, identity?: GitLabIdentityLink): Promise<string> {
     if (this.provider === 'github') {
       const repo = this.githubReposByProjectId.get(project.id);
@@ -276,6 +304,34 @@ export class GitLabService {
     };
   }
 
+  async linkGitHubRepository(project: Project, fullName: string, identity?: GitLabIdentityLink): Promise<GitLabRepository> {
+    const normalized = fullName.trim().replace(/^https:\/\/github\.com\//i, '').replace(/\.git$/i, '').replace(/\/+$/, '');
+    if (!/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
+      throw new Error('Repository must be in owner/name format.');
+    }
+
+    const token = this.requiredGitHubToken(identity);
+    const repo = await this.gitHubRequest<GitHubRepositoryResponse>(`/repos/${normalized}`, { method: 'GET' }, token);
+    const [owner, repoName] = repo.full_name.split('/');
+    if (!owner || !repoName) {
+      throw new Error('GitHub repository response was invalid.');
+    }
+
+    this.githubReposByProjectId.set(project.id, { owner, repo: repoName, fullName: repo.full_name });
+    await this.upsertGitHubVariable(owner, repoName, 'DIVBAND_PROJECT_ID', project.id, identity);
+    await this.upsertGitHubVariable(owner, repoName, 'DIVBAND_PROJECT_SLUG', project.slug, identity);
+    await this.upsertGitHubVariable(owner, repoName, 'DIVBAND_PLATFORM_HOSTNAME', project.platformHostname, identity);
+
+    return {
+      path: repo.full_name,
+      webUrl: repo.html_url,
+      cloneUrl: repo.ssh_url,
+      provider: 'github',
+      defaultBranch: repo.default_branch,
+      offline: false,
+    };
+  }
+
   async listRepositories(identity?: GitLabIdentityLink): Promise<SourceControlRepositorySummary[]> {
     if (this.provider === 'github') {
       const token = this.requiredGitHubToken(identity);
@@ -313,49 +369,76 @@ export class GitLabService {
     }));
   }
 
-  private mockRepository(project: Project): GitLabRepository {
-    const encodedPath = project.gitlabPath.split('/').map(encodeURIComponent).join('/');
+  private mockRepository(project: Project, identity?: GitLabIdentityLink, offline = true): GitLabRepository {
+    const repoName = githubRepoName(project.slug);
+    const owner = identity?.provider === 'github' && identity.username
+      ? identity.username
+      : project.gitlabPath.split('/').slice(-2, -1)[0] ?? project.gitlabPath.split('/')[0] ?? 'local-user';
+    const path = `${owner}/${repoName}`;
     const baseUrl = this.provider === 'github' ? 'https://github.com' : this.gitLabBaseUrl;
     return {
-      path: project.gitlabPath,
-      webUrl: `${baseUrl}/${encodedPath}`,
-      cloneUrl: `git@${new URL(baseUrl).hostname}:${project.gitlabPath}.git`,
+      path,
+      webUrl: `${baseUrl}/${path}`,
+      cloneUrl: `git@${new URL(baseUrl).hostname}:${path}.git`,
       provider: this.provider,
       defaultBranch: this.defaultBranch,
+      offline,
     };
   }
 
   private async createGitHubRepository(project: Project, identity?: GitLabIdentityLink): Promise<GitLabRepository> {
-    const token = this.gitHubTokenFor(identity);
-    if (!token) {
-      return this.mockRepository(project);
+    if (['1', 'true', 'yes'].includes((process.env.DIVBAND_GITHUB_OFFLINE ?? '').toLowerCase())) {
+      return this.mockRepository(project, identity);
     }
 
-    const user = await this.gitHubRequest<GitHubUserResponse>('/user', { method: 'GET' }, token);
-    const repoName = githubRepoName(project.slug);
-    const existing = await this.findGitHubRepository(user.login, repoName, token);
-    const repo = existing ?? await this.gitHubRequest<GitHubRepositoryResponse>('/user/repos', {
-      method: 'POST',
-      body: {
-        name: repoName,
-        private: true,
-        auto_init: true,
-        description: `Divband project ${project.name}`,
-      },
-    }, token);
+    const token = this.gitHubTokenFor(identity);
+    if (!token) {
+      return this.mockRepository(project, identity);
+    }
 
-    this.githubReposByProjectId.set(project.id, { owner: user.login, repo: repo.name, fullName: repo.full_name });
-    await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PROJECT_ID', project.id, identity);
-    await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PROJECT_SLUG', project.slug, identity);
-    await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PLATFORM_HOSTNAME', project.platformHostname, identity);
+    try {
+      const user = await this.gitHubRequest<GitHubUserResponse>('/user', { method: 'GET' }, token);
+      const repoName = githubRepoName(project.slug);
+      const existing = await this.findGitHubRepository(user.login, repoName, token);
+      const repo = existing ?? await this.gitHubRequest<GitHubRepositoryResponse>('/user/repos', {
+        method: 'POST',
+        body: {
+          name: repoName,
+          private: true,
+          auto_init: true,
+          description: `Divband project ${project.name}`,
+        },
+      }, token);
 
-    return {
-      path: repo.full_name,
-      webUrl: repo.html_url,
-      cloneUrl: repo.ssh_url,
-      provider: 'github',
-      defaultBranch: repo.default_branch,
-    };
+      this.githubReposByProjectId.set(project.id, { owner: user.login, repo: repo.name, fullName: repo.full_name });
+      await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PROJECT_ID', project.id, identity);
+      await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PROJECT_SLUG', project.slug, identity);
+      await this.upsertGitHubVariable(user.login, repo.name, 'DIVBAND_PLATFORM_HOSTNAME', project.platformHostname, identity);
+
+      return {
+        path: repo.full_name,
+        webUrl: repo.html_url,
+        cloneUrl: repo.ssh_url,
+        provider: 'github',
+        defaultBranch: repo.default_branch,
+        offline: false,
+      };
+    } catch (error) {
+      if (this.shouldUseOfflineGitHubFallback(error)) {
+        return this.mockRepository(project, identity);
+      }
+      throw error;
+    }
+  }
+
+  private shouldUseOfflineGitHubFallback(error: unknown): boolean {
+    if (['1', 'true', 'yes'].includes((process.env.DIVBAND_GITHUB_OFFLINE ?? '').toLowerCase())) {
+      return true;
+    }
+    if (process.env.NODE_ENV === 'production') {
+      return false;
+    }
+    return isGitHubNetworkError(error);
   }
 
   private async createGitHubBranch(project: Project, changeRequest: AiChangeRequest, patch: AiPatchProposal, identity?: GitLabIdentityLink): Promise<GitLabBranchResult> {
@@ -420,6 +503,16 @@ export class GitLabService {
     if (cached) {
       return cached;
     }
+
+    if (project.repository?.provider === 'github' && project.repository.path.includes('/')) {
+      const [owner, repo] = project.repository.path.split('/');
+      if (owner && repo) {
+        const details = { owner, repo, fullName: project.repository.path };
+        this.githubReposByProjectId.set(project.id, details);
+        return details;
+      }
+    }
+
     const token = this.requiredGitHubToken(identity);
     const user = await this.gitHubRequest<GitHubUserResponse>('/user', { method: 'GET' }, token);
     const repoName = githubRepoName(project.slug);
@@ -635,18 +728,26 @@ export class GitLabService {
   }
 
   private async gitHubRequest<T = unknown>(path: string, options: { method: string; body?: unknown }, token: string, ignoredStatuses: number[] = []): Promise<T> {
-    const response = await fetch(`${this.gitHubBaseUrl}${path}`, {
-      method: options.method,
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        'x-github-api-version': '2022-11-28',
-      },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    try {
+      const response = await fetch(`${this.gitHubBaseUrl}${path}`, {
+        method: options.method,
+        headers: {
+          accept: 'application/vnd.github+json',
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'x-github-api-version': '2022-11-28',
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: AbortSignal.timeout(30_000),
+      });
 
-    return parseJsonResponse<T>(response, ignoredStatuses, 'GitHub');
+      return await parseJsonResponse<T>(response, ignoredStatuses, 'GitHub');
+    } catch (error) {
+      if (error instanceof SourceControlHttpError) {
+        throw error;
+      }
+      throw new Error(formatGitHubNetworkFailure(error));
+    }
   }
 }
 
@@ -681,6 +782,24 @@ function sourceControlProvider(value: string | undefined, env: Record<string, st
 
 function githubRepoName(slug: string): string {
   return slug.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^-+|-+$/g, '') || 'divband-project';
+}
+
+function isGitHubNetworkError(error: unknown): boolean {
+  const message = formatGitHubNetworkFailure(error).toLowerCase();
+  return message.includes('fetch failed')
+    || message.includes('eai_again')
+    || message.includes('enotfound')
+    || message.includes('econnrefused')
+    || message.includes('etimedout')
+    || message.includes('network');
+}
+
+function formatGitHubNetworkFailure(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = error.cause instanceof Error ? error.cause.message : undefined;
+    return cause ? `${error.message} (${cause})` : error.message;
+  }
+  return 'network request failed';
 }
 
 function encodePath(path: string): string {

@@ -10,6 +10,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  username: string;
   createdAt: string;
   emailVerifiedAt?: string;
   signupInviteCode?: string;
@@ -152,6 +153,7 @@ export interface SourceControlOAuthState {
   userId: string;
   projectId?: string;
   returnTo: string;
+  redirectBaseUrl?: string;
   createdAt: string;
   expiresAt: string;
   usedAt?: string;
@@ -297,6 +299,7 @@ export interface Project {
   gitlabPath: string;
   namespace: string;
   platformHostname: string;
+  workspaceHostname: string;
   runnerTag: string;
   repositoryUrl?: string;
   repository?: ProjectRepository;
@@ -320,6 +323,7 @@ export interface ProjectRepository {
   cloneUrl: string;
   defaultBranch: string;
   connectedAt: string;
+  offline?: boolean;
 }
 
 export interface PublishFileManifest {

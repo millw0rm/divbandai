@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { hasAuthToken } from './auth-session';
 import {
   createInitialDashboardState,
   mountDashboard,
@@ -14,16 +15,25 @@ export interface DashboardAppProps {
   initialProjectId?: string;
 }
 
-export default function DashboardApp({ initialPage = 'sign-in', initialProjectId }: DashboardAppProps) {
+export default function DashboardApp({ initialPage = 'project-list', initialProjectId }: DashboardAppProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const controllerRef = useRef<DashboardController | undefined>(undefined);
+  const [ready, setReady] = useState(false);
   const initialState = createInitialDashboardState({
     currentPage: initialPage,
     selectedProjectId: initialProjectId,
   });
 
   useEffect(() => {
-    if (!rootRef.current || controllerRef.current) {
+    if (!hasAuthToken()) {
+      globalThis.location.replace('/');
+      return;
+    }
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !rootRef.current || controllerRef.current) {
       return;
     }
 
@@ -36,11 +46,15 @@ export default function DashboardApp({ initialPage = 'sign-in', initialProjectId
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Dashboard failed to start.';
       rootRef.current.innerHTML = renderDashboard(createInitialDashboardState({
-        currentPage: 'sign-in',
+        currentPage: 'project-list',
         error: message,
       }));
     }
-  }, []);
+  }, [ready]);
+
+  if (!ready) {
+    return <div className="dashboard-boot"><div className="boot-card">Loading dashboard…</div></div>;
+  }
 
   return <div id="app" ref={rootRef} dangerouslySetInnerHTML={{ __html: renderDashboard(initialState) }} />;
 }

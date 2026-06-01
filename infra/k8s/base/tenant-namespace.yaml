@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: project-REPLACE_WITH_SLUG
+  name: REPLACE_WITH_NAMESPACE
   labels:
     app.kubernetes.io/managed-by: divband
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
@@ -21,7 +21,7 @@ apiVersion: v1
 kind: ResourceQuota
 metadata:
   name: project-quota
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID
@@ -51,7 +51,7 @@ apiVersion: v1
 kind: LimitRange
 metadata:
   name: project-limits
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID

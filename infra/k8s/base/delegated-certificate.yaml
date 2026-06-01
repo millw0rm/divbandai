@@ -5,7 +5,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: delegated-custom-domain
-  namespace: project-REPLACE_WITH_SLUG
+  namespace: REPLACE_WITH_NAMESPACE
   labels:
     divband.io/project-id: REPLACE_WITH_PROJECT_ID
     divband.io/tenant-id: REPLACE_WITH_TENANT_ID

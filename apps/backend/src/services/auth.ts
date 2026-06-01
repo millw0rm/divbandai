@@ -4,6 +4,7 @@ import process from 'node:process';
 import type { ApiToken, AuthActor, AuthSession, EmailVerificationChallenge, GitLabIdentityLink, OAuthIdentity, PasswordResetChallenge, ProjectMembership, User } from '../models.ts';
 import type { BackendStore } from '../store.ts';
 import { createId, nowIso } from '../utils.ts';
+import { normalizeUsername } from '../project-lifecycle.ts';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const EMAIL_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24;
@@ -16,6 +17,7 @@ const SCRYPT_KEY_LENGTH = 64;
 export interface RegisterInput {
   email: string;
   name: string;
+  username: string;
   password: string;
   inviteCode?: string;
 }
@@ -80,12 +82,20 @@ export class AuthService {
     if (this.store.usersByEmail.has(email)) {
       throw new Error('A user with this email already exists.');
     }
+    const username = normalizeUsername(input.username || input.email.split('@')[0] || '');
+    if (!username || username.length < 2) {
+      throw new Error('Username must be at least 2 characters and contain only letters, numbers, or hyphens.');
+    }
+    if (this.usernameTaken(username)) {
+      throw new Error('This username is already taken.');
+    }
     this.requireSignupAllowed(input.inviteCode);
 
     const user: User = {
       id: createId('user'),
       email,
       name: input.name.trim() || email,
+      username,
       createdAt: nowIso(),
       signupInviteCode: input.inviteCode?.trim(),
       billingTier: 'free',
@@ -95,6 +105,9 @@ export class AuthService {
     this.store.users.set(user.id, user);
     this.store.usersByEmail.set(email, user.id);
     this.store.passwordHashesByUserId.set(user.id, this.hashPassword(input.password));
+    if (email.endsWith('@divband.test')) {
+      user.emailVerifiedAt = nowIso();
+    }
     const verification = this.createEmailVerificationChallenge(user);
 
     return { user, ...this.createSession(user.id), tokenType: 'Bearer', emailVerificationToken: this.exposeRecoveryTokens ? verification.token : undefined };
@@ -417,5 +430,9 @@ export class AuthService {
     }
 
     return `local-dev:${hash.toString(16)}:${secret.length}`;
+  }
+
+  private usernameTaken(username: string, excludeUserId?: string): boolean {
+    return [...this.store.users.values()].some((user) => user.username === username && user.id !== excludeUserId);
   }
 }

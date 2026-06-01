@@ -5,6 +5,7 @@ apps/**/.next/
 apps/**/data/
 .env
 .env.*
+!.env.local.example
 .secrets/
 infra/ansible/inventory.yml
 infra/ansible/artifacts/
