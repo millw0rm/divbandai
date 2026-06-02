@@ -264,15 +264,22 @@ From your laptop (repo checkout):
 make ansible-remote INVENTORY=infra/ansible/inventory.yml
 ```
 
-On Iranian VPSes that cannot reach global Ubuntu/Docker endpoints, this applies
-Arvan mirror and registry settings (`divband_arvan_enabled=true` by default in
-the Makefile remote target).
+This installs Docker and deploys the stack only (no Arvan mirror, no DNS).
 
-Revert to normal Docker Hub image names:
+On Iranian VPSes that cannot reach global Ubuntu/Docker endpoints, opt in explicitly:
+
+```bash
+make ansible-remote-arvan INVENTORY=infra/ansible/inventory.yml
+```
+
+Revert Arvan mirror/host pins and normal Docker Hub image names:
 
 ```bash
 make ansible-remote-revert INVENTORY=infra/ansible/inventory.yml
 ```
+
+DNS records are **not** part of Ansible. Create them in your DNS panel, or use the
+Project API with `"dns": true` and `DIVBAND_DNS_PROVIDER=arvan` (see [platform-guide.md](platform-guide.md)).
 
 More detail: [infra/ansible/README.md](../infra/ansible/README.md).
 

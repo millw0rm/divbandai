@@ -86,8 +86,10 @@ The manual fix was:
 The remote playbook exists so that fix is no longer an undocumented one-off VM
 mutation. It makes the change repeatable, reviewable, and reversible:
 
-- The Arvan behavior is behind `divband_arvan_enabled=true`.
-- Revert behavior is behind `divband_arvan_enabled=false`.
+- Default remote deploy (`make ansible-remote`) installs Docker and the stack only.
+- Arvan mirror/host pins: `make ansible-remote-arvan` (`divband_configure_arvan=true`).
+- Arvan image prefixes in Compose: `divband_arvan_enabled=true` (set together with configure).
+- Revert Arvan: `make ansible-remote-revert`.
 - Original `/etc/hosts` and Ubuntu source files are backed up under
   `/etc/divband/backups`.
 - Validation playbooks assert that the selected mode is actually applied before

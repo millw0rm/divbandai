@@ -55,6 +55,17 @@ Edit `/etc/divband/deploy.env` if needed:
 
 Open **TCP 9090** in your cloud firewall (or reverse-proxy `POST /deploy` to that port).
 
+**Docker required** on the VPS (webhook runs as `ubuntu`):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
+sudo usermod -aG docker ubuntu
+# log out/in or: newgrp docker
+```
+
+Or bootstrap with Ansible: `make ansible-remote` from a machine that can SSH to the VPS.
+
 ### Manual deploy on the VPS
 
 ```bash

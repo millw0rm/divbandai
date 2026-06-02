@@ -14,7 +14,7 @@
     allow_downgrade: true
   when:
     - divband_install_docker | bool
-    - divband_arvan_enabled | bool
+    - divband_configure_arvan | default(false) | bool
     - ansible_facts.os_family == "Debian"
 
 - name: Install Docker packages from current apt sources
@@ -23,7 +23,7 @@
     state: present
   when:
     - divband_install_docker | bool
-    - not (divband_arvan_enabled | bool)
+    - not (divband_configure_arvan | default(false) | bool)
     - ansible_facts.os_family == "Debian"
 
 - name: Enable Docker service

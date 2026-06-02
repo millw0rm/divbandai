@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${DIVBAND_DEPLOY_ENV:-/etc/divband/deploy.env}"
-LOCK_FILE="${DIVBAND_DEPLOY_LOCK:-/var/lock/divband-deploy.lock}"
+LOCK_FILE="${DIVBAND_DEPLOY_LOCK:-}"
 
 usage() {
   cat <<'EOF'
@@ -30,6 +30,33 @@ log() {
 die() {
   printf '[vps-deploy] error: %s\n' "$*" >&2
   exit 1
+}
+
+docker_cmd() {
+  if [[ -n "${DIVBAND_DOCKER_CMD:-}" ]]; then
+    printf '%s\n' "${DIVBAND_DOCKER_CMD}"
+    return 0
+  fi
+  if command -v docker >/dev/null 2>&1; then
+    printf 'docker\n'
+    return 0
+  fi
+  if [[ -x /usr/bin/docker ]]; then
+    printf '/usr/bin/docker\n'
+    return 0
+  fi
+  if [[ "${DIVBAND_DOCKER_SUDO:-false}" == "true" ]] && command -v sudo >/dev/null 2>&1; then
+    printf 'sudo docker\n'
+    return 0
+  fi
+  return 1
+}
+
+require_docker() {
+  local cmd
+  cmd="$(docker_cmd)" || die "docker not found; install Docker on this host (see docs/ci-cd.md) or set DIVBAND_DOCKER_CMD in ${ENV_FILE}"
+  DOCKER="${cmd}"
+  log "using ${DOCKER}"
 }
 
 run_smoke() {
@@ -59,6 +86,8 @@ main() {
 
   [[ -d "${APP_DIR}/.git" ]] || die "not a git repo: ${APP_DIR}"
 
+  LOCK_FILE="${LOCK_FILE:-${APP_DIR}/.divband/deploy.lock}"
+  mkdir -p "${APP_DIR}/.divband"
   exec 9>"${LOCK_FILE}"
   if ! flock -n 9; then
     die "another deploy is running (lock ${LOCK_FILE})"
@@ -86,12 +115,14 @@ regenerate_stack(
 )
 "
 
+  require_docker
+
   if [[ -n "${DIVBAND_GHCR_TOKEN:-}" ]]; then
-    printf '%s' "${DIVBAND_GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_OWNER}" --password-stdin
+    printf '%s' "${DIVBAND_GHCR_TOKEN}" | ${DOCKER} login ghcr.io -u "${GHCR_OWNER}" --password-stdin
   fi
 
-  docker compose pull
-  docker compose up -d
+  ${DOCKER} compose pull
+  ${DOCKER} compose up -d
 
   log "waiting for HAProxy"
   for _ in $(seq 1 30); do

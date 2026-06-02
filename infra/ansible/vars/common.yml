@@ -4,6 +4,10 @@ divband_unknown_domain: unknown.divband.com
 divband_install_docker: true
 divband_deploy_stack: true
 
+# Arvan mirror/registry: off by default; enable explicitly (make ansible-remote-arvan).
+divband_configure_arvan: false
+divband_arvan_enabled: false
+
 divband_use_ghcr: false
 divband_ghcr_registry: ghcr.io
 divband_ghcr_owner: millw0rm

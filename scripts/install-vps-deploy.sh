@@ -14,6 +14,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 install -d -m 0750 -o root -g "${DEPLOY_USER}" /etc/divband
+install -d -m 0755 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/divband/.divband 2>/dev/null || true
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   secret="$(openssl rand -hex 32)"
@@ -22,7 +23,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 DIVBAND_APP_DIR=/opt/divband
 DIVBAND_GHCR_OWNER=millw0rm
 DIVBAND_GHCR_TOKEN=
-DIVBAND_ARVAN_ENABLED=true
+DIVBAND_ARVAN_ENABLED=false
 DIVBAND_GIT_REMOTE=origin
 DIVBAND_DEPLOY_WEBHOOK_SECRET=${secret}
 DIVBAND_DEPLOY_WEBHOOK_HOST=0.0.0.0

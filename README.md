@@ -161,6 +161,5 @@ into Ansible tasks.
 
 The Ansible setup lives in [infra/ansible](infra/ansible/README.md). It has
 separate local and remote entrypoints, both covering Docker installation,
-HAProxy/Nginx config rendering, Compose startup, and smoke tests. The remote
-entrypoint can also apply or revert the Arvan mirror/registry configuration
-with `divband_arvan_enabled=true|false`.
+HAProxy/Nginx config rendering, Compose startup, and smoke tests. Arvan mirror/registry
+is optional: `make ansible-remote-arvan`. DNS is optional via the Project API (`"dns": true`).

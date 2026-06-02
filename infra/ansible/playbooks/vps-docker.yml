@@ -1,4 +1,5 @@
 ---
 - ansible.builtin.import_playbook: remote-docker.yml
   vars:
-    divband_arvan_enabled: true
+    divband_arvan_enabled: false
+    divband_configure_arvan: false

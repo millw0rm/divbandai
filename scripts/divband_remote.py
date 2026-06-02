@@ -69,9 +69,25 @@ def run_ansible(environment, *, extra_vars=None):
         "-i",
         inventory,
         playbook,
-        "-e",
-        f"divband_arvan_enabled={'true' if config.get('arvan', True) else 'false'}",
     ]
+    if config.get("arvan", False):
+        command.extend(
+            [
+                "-e",
+                "divband_configure_arvan=true",
+                "-e",
+                "divband_arvan_enabled=true",
+            ]
+        )
+    else:
+        command.extend(
+            [
+                "-e",
+                "divband_configure_arvan=false",
+                "-e",
+                "divband_arvan_enabled=false",
+            ]
+        )
     for key, value in (extra_vars or {}).items():
         if isinstance(value, bool):
             rendered = "true" if value else "false"

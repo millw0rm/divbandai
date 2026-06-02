@@ -50,14 +50,14 @@
     owner: root
     group: root
     mode: "0644"
-  when: divband_arvan_enabled | bool
+  when: divband_configure_arvan | default(false) | bool
 
 - name: Remove Arvan host pins
   ansible.builtin.blockinfile:
     path: /etc/hosts
     marker: "# {mark} DIVBAND ARVAN HOST PINS"
     state: absent
-  when: not (divband_arvan_enabled | bool)
+  when: not (divband_configure_arvan | default(false) | bool)
 
 - name: Configure Arvan Ubuntu mirror
   ansible.builtin.template:
@@ -67,7 +67,7 @@
     group: root
     mode: "0644"
   when:
-    - divband_arvan_enabled | bool
+    - divband_configure_arvan | default(false) | bool
     - ansible_facts.os_family == "Debian"
 
 - name: Restore original Ubuntu sources
@@ -79,6 +79,6 @@
     group: root
     mode: "0644"
   when:
-    - not (divband_arvan_enabled | bool)
+    - not (divband_configure_arvan | default(false) | bool)
     - ansible_facts.os_family == "Debian"
     - divband_sources_backup_stat.stat.exists
