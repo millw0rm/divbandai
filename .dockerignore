@@ -1,11 +1,10 @@
 .git
-.gitlab-ci.yml
+.secrets
+.venv-ansible
 node_modules
 **/node_modules
 **/dist
 .env
 .env.*
-infra/ansible/inventory.yml
-infra/ansible/artifacts
 npm-debug.log*
 .DS_Store

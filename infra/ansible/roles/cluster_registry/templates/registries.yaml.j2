@@ -1,8 +1,0 @@
-mirrors:
-  "{{ cluster_registry_endpoint }}":
-    endpoint:
-      - "{{ cluster_registry_k3s_endpoint }}"
-configs:
-  "{{ cluster_registry_endpoint }}":
-    tls:
-      insecure_skip_verify: true

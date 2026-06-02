@@ -1,6 +1,0 @@
----
-- name: Provision or connect GitLab
-  hosts: gitlab
-  become: true
-  roles:
-    - role: gitlab

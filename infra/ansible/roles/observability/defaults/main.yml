@@ -1,7 +1,0 @@
----
-observability_namespace: observability
-observability_install_metrics_server: true
-observability_metrics_server_manifest_url: https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-observability_install_fluent_bit: true
-observability_fluent_bit_image: cr.fluentbit.io/fluent/fluent-bit:3.1.4
-observability_fluent_bit_log_level: info

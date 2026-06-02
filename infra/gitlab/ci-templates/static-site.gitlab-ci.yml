@@ -1,3 +1,0 @@
-# Backward-compatible alias for static frontend projects.
-include:
-  - local: /infra/gitlab/ci-templates/static-frontend.gitlab-ci.yml

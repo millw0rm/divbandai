@@ -1,44 +1,30 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help infra-preflight configure-github-actions kubectl-install kube kube-check deploy-production
+.PHONY: help up down restart ps logs smoke
 
-help: ## List available commands.
+help:
 	@printf 'Available commands:\n'
-	@printf '  make infra-preflight [ANSIBLE_INVENTORY=<path>] [GITHUB_REPOSITORY=<owner/repo>] [EXPECTED_GITHUB_ACCOUNT=<login>]\n'
-	@printf '      Check GitHub, repository, Actions setup, inventory hosts, and VM SSH access.\n'
-	@printf '  make configure-github-actions\n'
-	@printf '      Configure GitHub Actions secret and runtime deploy variables via Ansible/gh.\n'
-	@printf '  make kubectl-install [KUBECTL_VERSION=v1.30.14]\n'
-	@printf '      Install a repo-local kubectl under .tools/ for k3s operator access.\n'
-	@printf '  make kube ARGS="get nodes -o wide"\n'
-	@printf '      Run kubectl against infra/ansible/artifacts/kubeconfig.\n'
-	@printf '  make kube-check [PROJECT_SLUG=<slug>]\n'
-	@printf '      Verify k3s access, platform add-ons, backend kubeconfig hand-off, and optional project resources.\n'
-	@printf '  make deploy-production REGISTRY=<registry/project> [TAG=<tag>] [ANSIBLE_INVENTORY=<path>] [ANSIBLE_EXTRA_ARGS=<args>]\n'
-	@printf '      Build, push, and deploy the production control plane via Ansible.\n'
+	@printf '  make up       Start HAProxy and test Nginx\n'
+	@printf '  make down     Stop and remove containers\n'
+	@printf '  make restart  Recreate the stack\n'
+	@printf '  make ps       Show container status\n'
+	@printf '  make logs     Follow container logs\n'
+	@printf '  make smoke    Verify test.divband.com routing locally\n'
 
-infra-preflight: ## Check local GitHub, Actions, inventory, and VM SSH readiness.
-	ANSIBLE_INVENTORY="$(ANSIBLE_INVENTORY)" \
-	GITHUB_REPOSITORY="$(GITHUB_REPOSITORY)" \
-	EXPECTED_GITHUB_ACCOUNT="$(EXPECTED_GITHUB_ACCOUNT)" \
-	DIVBAND_PREFLIGHT_SKIP_SSH="$(DIVBAND_PREFLIGHT_SKIP_SSH)" \
-	./scripts/preflight-infrastructure.sh
+up:
+	docker compose up -d
 
-configure-github-actions: ## Configure GitHub Actions secrets and deployment variables.
-	ansible-playbook infra/ansible/playbooks/configure-github-actions.yml
+down:
+	docker compose down
 
-kubectl-install: ## Install repo-local kubectl under .tools/.
-	./scripts/install-kubectl.sh
+restart:
+	docker compose up -d --force-recreate
 
-kube: ## Run kubectl against the collected k3s kubeconfig. Example: make kube ARGS="get nodes -o wide"
-	./scripts/kubectl-k3s.sh $(ARGS)
+ps:
+	docker compose ps
 
-kube-check: ## Verify k3s/operator access and optional project resources. Example: make kube-check PROJECT_SLUG=demo
-	./scripts/check-k3s-cluster.sh "$(PROJECT_SLUG)"
+logs:
+	docker compose logs -f
 
-deploy-production: ## Build, push, and deploy the production control plane.
-	REGISTRY="$(REGISTRY)" \
-	TAG="$(TAG)" \
-	ANSIBLE_INVENTORY="$(ANSIBLE_INVENTORY)" \
-	ANSIBLE_EXTRA_ARGS="$(ANSIBLE_EXTRA_ARGS)" \
-	./scripts/deploy-production.sh
+smoke:
+	curl -fsS -H "Host: test.divband.com" http://127.0.0.1/ | grep -q "Welcome to test"
