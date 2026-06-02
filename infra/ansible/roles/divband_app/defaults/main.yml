@@ -31,6 +31,12 @@ divband_gitlab_token: "{{ vault_divband_gitlab_token | default(gitlab_token | de
 divband_gitlab_access_token: "{{ vault_divband_gitlab_access_token | default(gitlab_access_token | default('')) }}"
 divband_gitlab_namespace_id: "{{ vault_divband_gitlab_namespace_id | default(gitlab_namespace_id | default('')) }}"
 divband_token_hash_pepper: divband-local-development-token-pepper
+# Infrastructure preset: default (generic) or arvan (Arvan AOS + CDN DNS). See docs/infrastructure-profiles.md.
+divband_infrastructure_profile: default
+
+divband_object_storage_provider: auto
+divband_object_storage_force_path_style: false
+
 divband_dns_provider: disabled
 divband_dns_provider_endpoint: ""
 divband_dns_provider_token: "{{ vault_divband_dns_provider_token | default(dns_provider_token | default('')) }}"
@@ -42,6 +48,7 @@ divband_dns_provider_apex_record_type: ALIAS
 # above are rendered explicitly in control-plane.yml.j2 and should not be placed
 # here by inventory overrides.
 divband_app_env:
+  DIVBAND_INFRASTRUCTURE_PROFILE: "{{ divband_infrastructure_profile }}"
   KUBERNETES_TEMPLATE_DIR: /app/infra/k8s/base
   KUBERNETES_APPLY: "true"
   KUBERNETES_MODE: kubeconfig

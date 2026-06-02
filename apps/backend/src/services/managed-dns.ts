@@ -1,4 +1,5 @@
 import type { DomainDnsMode, Project, ProjectDomain } from '../models.ts';
+import { createArvanManagedDnsProviderFromEnv } from './arvan-managed-dns.ts';
 
 export type ManagedDnsRecordType = 'A' | 'AAAA' | 'ALIAS' | 'ANAME' | 'CNAME' | 'TXT' | 'NS';
 
@@ -39,7 +40,7 @@ export interface ManagedDnsServiceOptions {
 }
 
 export interface ManagedDnsConfig {
-  provider: 'disabled' | 'http';
+  provider: 'disabled' | 'http' | 'arvan';
   endpoint?: string;
   token?: string;
   defaultTtlSeconds: number;
@@ -254,6 +255,14 @@ export class HttpManagedDnsProvider implements ManagedDnsProvider {
 export function createManagedDnsProvider(config: ManagedDnsConfig): ManagedDnsProvider {
   if (config.provider === 'http') {
     return new HttpManagedDnsProvider({ endpoint: config.endpoint ?? '', token: config.token ?? '' });
+  }
+  if (config.provider === 'arvan') {
+    return createArvanManagedDnsProviderFromEnv({
+      DNS_PROVIDER_TOKEN: config.token,
+      DNS_PROVIDER_ENDPOINT: config.endpoint,
+      DNS_PROVIDER_ARVAN_NAMESERVERS: process.env.DNS_PROVIDER_ARVAN_NAMESERVERS,
+      DNS_PROVIDER_ARVAN_AUTO_REGISTER_DOMAIN: process.env.DNS_PROVIDER_ARVAN_AUTO_REGISTER_DOMAIN,
+    });
   }
   return new DisabledManagedDnsProvider();
 }

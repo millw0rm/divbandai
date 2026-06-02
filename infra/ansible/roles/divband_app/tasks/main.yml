@@ -1,4 +1,20 @@
 ---
+- name: Load infrastructure profile variables
+  ansible.builtin.include_vars:
+    file: "profile_{{ divband_infrastructure_profile }}.yml"
+  when: divband_infrastructure_profile is defined and divband_infrastructure_profile != 'default'
+
+- name: Merge Arvan infrastructure profile backend environment
+  ansible.builtin.set_fact:
+    divband_app_env: "{{ divband_app_env | combine({
+      'DIVBAND_INFRASTRUCTURE_PROFILE': 'arvan',
+      'OBJECT_STORAGE_PROVIDER': divband_object_storage_provider,
+      'OBJECT_STORAGE_FORCE_PATH_STYLE': divband_object_storage_force_path_style | string,
+      'DNS_PROVIDER_ARVAN_NAMESERVERS': 'ns1.arvancdn.ir,ns2.arvancdn.ir',
+      'DNS_PROVIDER_ARVAN_AUTO_REGISTER_DOMAIN': 'true',
+    }, recursive=True) }}"
+  when: divband_infrastructure_profile == 'arvan'
+
 - name: Assert production divband app configuration is complete
   ansible.builtin.assert:
     that:

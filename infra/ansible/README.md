@@ -34,7 +34,7 @@ The role currently enforces this boundary with `kubernetes_distribution: k3s`; s
 - `roles/load_balancer` — installs HAProxy/keepalived on `load_balancers` hosts to forward `:6443` to Kubernetes control-plane nodes and public `:80`/`:443` to ingress-nginx nodes.
 - `roles/gitlab` — connects to an existing GitLab endpoint, installs self-hosted GitLab when `gitlab_mode: install` is selected, and can run the Terraform stack under `../gitlab/terraform`.
 - `roles/gitlab_runner` — validates that a runner token source exists before package installation, resolves project runner tags and authentication tokens from Terraform outputs or Vault, disables untagged jobs, and registers dedicated runners.
-- `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer.
+- `roles/divband_app` — deploys the backend/frontend control plane, mounts the generated kubeconfig into the backend, and points the backend at the Kubernetes template renderer. Optional `divband_infrastructure_profile: arvan` enables Arvan Object Storage and CDN DNS presets (see [`docs/infrastructure-profiles.md`](../../docs/infrastructure-profiles.md)).
 - `roles/cluster_registry` — creates the k3s-hosted registry used by the single-VPS GitHub deployment flow.
 - `roles/divband_release` — checks out the GitHub source, builds backend/frontend images, pushes them to the k3s registry, and passes those image names to `roles/divband_app`.
 

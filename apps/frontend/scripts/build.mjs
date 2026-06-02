@@ -33,13 +33,17 @@ await rm(distRoot, { force: true, recursive: true });
 await mkdir(path.join(distRoot, 'assets'), { recursive: true });
 
 const dashboardSource = await readFile(path.join(sourceRoot, 'dashboard.ts'), 'utf8');
+const authSessionSource = await readFile(path.join(sourceRoot, 'auth-session.ts'), 'utf8');
 const mainSource = await readFile(path.join(sourceRoot, 'main.ts'), 'utf8');
 const stylesSource = await readFile(path.join(sourceRoot, 'styles.css'), 'utf8');
 const indexSource = await readFile(path.join(packageRoot, 'index.html'), 'utf8');
 
 const bundledSource = [
   `const __DIVBAND_API_BASE_URL__ = ${JSON.stringify(apiBaseUrl)};`,
-  dashboardSource.replace(/^export\s+(class|function|const)\s+/gm, '$1 '),
+  authSessionSource.replace(/^export\s+(class|function|const)\s+/gm, '$1 '),
+  dashboardSource
+    .replace(/^import\s+[^;]+;\s*$/gm, '')
+    .replace(/^export\s+(class|function|const)\s+/gm, '$1 '),
   mainSource.replace(/^import\s+[^;]+;\s*$/gm, ''),
 ].join('\n\n');
 

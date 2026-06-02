@@ -4,6 +4,15 @@ export type { ApiRequest, ApiResponse, Project, ProjectRepository, ProjectDomain
 export { createBackendStore, defaultStore, hydrateBackendStore, snapshotBackendStore } from './store.ts';
 export type { BackendStore, BackendStoreSnapshot, PersistenceAdapter } from './store.ts';
 export { loadBackendConfig } from './config.ts';
+export {
+  applyInfrastructureProfileToProcessEnv,
+  describeInfrastructureProfile,
+  getInfrastructureProfile,
+  listInfrastructureProfiles,
+  resolveInfrastructureEnv,
+  INFRASTRUCTURE_PROFILE_ENV,
+} from './infrastructure-profile.ts';
+export type { InfrastructureProfileName, InfrastructureProfileSummary } from './infrastructure-profile.ts';
 export type { BackendRuntimeConfig, KubernetesConfigMode, ObjectStorageConfig, ObjectStorageProvider, ManagedDnsConfig, ManagedDnsProviderName, PersistenceDriver } from './config.ts';
 export { createRuntimeStore } from './runtime-store.ts';
 export type { RuntimeStore, RuntimeStoreOptions } from './runtime-store.ts';
@@ -23,6 +32,7 @@ export { StaticServingService } from './services/static-serving.ts';
 export { PublishExpiryService } from './services/publish-expiry.ts';
 export { createObjectStorage, InMemoryObjectStorage, S3ObjectStorage } from './services/object-storage.ts';
 export { createManagedDnsProvider, DisabledManagedDnsProvider, HttpManagedDnsProvider, ManagedDnsService } from './services/managed-dns.ts';
+export { ArvanManagedDnsProvider, buildArvanRecordPayload, createArvanManagedDnsProviderFromEnv, toArvanRecordType, toRelativeRecordName } from './services/arvan-managed-dns.ts';
 export type { StaticServeRequest, StaticServeResolution, StaticServingOptions } from './services/static-serving.ts';
 export type { PublishExpiryCleanupResult } from './services/publish-expiry.ts';
 export type { ObjectStorage, ObjectStorageOptions, S3ObjectStorageOptions, StoredObjectMetadata } from './services/object-storage.ts';

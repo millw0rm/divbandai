@@ -15,6 +15,7 @@ The same application code lives under `apps/backend` and `apps/frontend`. What c
 | **Kubernetes** | `KUBERNETES_CONFIG_MODE=disabled` (mocked in the service layer) | `kubeconfig` or `in_cluster` with real manifests under `infra/k8s/base/` |
 | **GitLab / tenant CI** | Mocked or optional real GitHub OAuth locally | Real GitLab projects, runners, and `infra/gitlab/ci-templates/` per tenant project |
 | **Infra tooling** | Not required | Ansible, Terraform (optional), k3s/K8s, pipelines, DNS |
+| **Infrastructure profile** | `default` (implicit) | Optional `divband_infrastructure_profile: arvan` — see [`infrastructure-profiles.md`](./infrastructure-profiles.md) |
 
 ## Flow 1: Local development
 

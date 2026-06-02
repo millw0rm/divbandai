@@ -4,6 +4,9 @@ import process from 'node:process';
 import { URL } from 'node:url';
 import { BackendService } from './backend-service.ts';
 import { loadBackendConfig } from './config.ts';
+import { applyInfrastructureProfileToProcessEnv, describeInfrastructureProfile } from './infrastructure-profile.ts';
+
+applyInfrastructureProfileToProcessEnv();
 import { createObjectStorage } from './services/object-storage.ts';
 import { StaticServingService } from './services/static-serving.ts';
 import { createManagedDnsProvider } from './services/managed-dns.ts';
@@ -72,7 +75,10 @@ const server = createServer(async (nodeRequest, nodeResponse) => {
 });
 
 server.listen(config.port, () => {
-  console.log(`divband backend listening on ${config.apiBaseUrl} (port ${config.port})`);
+  const infra = describeInfrastructureProfile(process.env);
+  console.log(
+    `divband backend listening on ${config.apiBaseUrl} (port ${config.port}); infrastructure profile=${infra.name}`,
+  );
   if (demoSeed) {
     console.log(`demo users seeded with password ${demoSeed.password}; project ${demoSeed.project.slug}`);
   }

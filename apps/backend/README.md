@@ -47,6 +47,7 @@ The MVP runtime uses Node's built-in HTTP server, runs TypeScript with Node's bu
 | `CERT_MANAGER_CLUSTER_ISSUER` | `letsencrypt-prod` | ClusterIssuer name rendered into tenant ingress/certificate templates. |
 | `KUBERNETES_INGRESS_CLASS` | `nginx` | Ingress class name for tenant routes. |
 | `EXTERNAL_SECRET_STORE_NAME` | `divband-tenant-secrets` | ClusterSecretStore name for full-stack templates that include `external-secret.yaml`. |
+| `divband_infrastructure_profile` / `DIVBAND_INFRASTRUCTURE_PROFILE` | `default` | `default` or `arvan`; applies vendor presets for unset storage/DNS vars. See [`docs/infrastructure-profiles.md`](../../docs/infrastructure-profiles.md). |
 | `OBJECT_STORAGE_PROVIDER` | `auto` | `auto`, `memory`, or `s3`; `auto` selects S3 when access key and secret env vars are present, otherwise the in-memory development adapter. |
 | `OBJECT_STORAGE_BUCKET` | `divband-local` | Object storage bucket for publish uploads. |
 | `OBJECT_STORAGE_ENDPOINT` | `http://localhost:9000` | Optional S3-compatible endpoint. |

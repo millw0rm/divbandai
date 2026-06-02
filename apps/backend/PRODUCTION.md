@@ -39,6 +39,10 @@ same environment variables used by `src/config.ts`:
    missing so a newly provisioned environment can self-heal, but migrations
    should remain part of deployment for auditable schema changes.
 
+## Infrastructure profiles (optional)
+
+Use `DIVBAND_INFRASTRUCTURE_PROFILE=arvan` to apply Arvan Object Storage and CDN DNS defaults for **unset** variables only. Generic deployments leave this unset or set `default`. See [`docs/infrastructure-profiles.md`](../../docs/infrastructure-profiles.md).
+
 ## S3-compatible object storage
 
 Create a private bucket for staged and live published-site objects. The backend
@@ -129,3 +133,21 @@ DNS_PROVIDER_DEFAULT_TTL_SECONDS=300 \
 DNS_PROVIDER_PLATFORM_INGRESS_TARGET=sites.example.com \
 npm run start --workspace @divband/backend
 ```
+
+### Arvan CDN DNS (delegated custom domains)
+
+Use the native adapter instead of a generic HTTP shim:
+
+```sh
+DNS_PROVIDER=arvan \
+DNS_PROVIDER_TOKEN="$ARVAN_CDN_API_KEY" \
+DNS_PROVIDER_ENDPOINT=https://napi.arvancloud.ir/cdn/4.0/domains \
+DNS_PROVIDER_DEFAULT_TTL_SECONDS=300 \
+DNS_PROVIDER_PLATFORM_INGRESS_TARGET=ingress.example.com \
+DNS_PROVIDER_APEX_RECORD_TYPE=ANAME \
+DNS_PROVIDER_ARVAN_NAMESERVERS=ns1.arvancdn.ir,ns2.arvancdn.ir \
+DNS_PROVIDER_ARVAN_AUTO_REGISTER_DOMAIN=true \
+npm run start --workspace @divband/backend
+```
+
+The API key is sent as the raw `Authorization` header value (same as [acme.sh Arvan DNS](https://github.com/acmesh-official/acme.sh/wiki/dnsapi2#dns_arvan)). See [`docs/arvan-integration-checklist.md`](../../docs/arvan-integration-checklist.md) for per-flow API mapping.

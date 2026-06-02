@@ -83,12 +83,15 @@ async function createBackendRuntime(): Promise<BackendRuntime> {
 
   const {
     BackendService,
+    applyInfrastructureProfileToProcessEnv,
     createManagedDnsProvider,
     createObjectStorage,
     createRuntimeStore,
     seedDemoData,
     loadBackendConfig,
   } = await import('@divband/backend');
+
+  applyInfrastructureProfileToProcessEnv();
 
   const config = loadBackendConfig();
   const runtimeStore = await createRuntimeStore({

@@ -70,6 +70,12 @@ spec:
               value: {{ divband_object_storage_endpoint | string | to_json }}
             - name: OBJECT_STORAGE_REGION
               value: {{ divband_object_storage_region | string | to_json }}
+            - name: OBJECT_STORAGE_PROVIDER
+              value: {{ divband_object_storage_provider | string | to_json }}
+            - name: OBJECT_STORAGE_FORCE_PATH_STYLE
+              value: {{ divband_object_storage_force_path_style | string | to_json }}
+            - name: DIVBAND_INFRASTRUCTURE_PROFILE
+              value: {{ divband_infrastructure_profile | string | to_json }}
             - name: DNS_PROVIDER
               value: {{ divband_dns_provider | string | to_json }}
             - name: DNS_PROVIDER_ENDPOINT
@@ -140,6 +146,9 @@ spec:
   'OBJECT_STORAGE_BUCKET',
   'OBJECT_STORAGE_ENDPOINT',
   'OBJECT_STORAGE_REGION',
+  'OBJECT_STORAGE_PROVIDER',
+  'OBJECT_STORAGE_FORCE_PATH_STYLE',
+  'DIVBAND_INFRASTRUCTURE_PROFILE',
   'OBJECT_STORAGE_ACCESS_KEY_ID',
   'OBJECT_STORAGE_SECRET_ACCESS_KEY',
   'DATABASE_URL',
