@@ -11,6 +11,7 @@ traffic path.
 | Test project | `projects/test` | Static Nginx site for `test.divband.com`. |
 | Docker Compose | `docker-compose.yml` | Defines and connects the containers on one VM. |
 | VPS Ansible | `infra/ansible` | Reversible automation for Arvan mirror/registry settings and Docker stack deployment. |
+| VPS validation | `infra/ansible/playbooks/validate-vps.yml` | Asserts the selected Arvan/non-Arvan mode and smoke-tests HAProxy routing. |
 
 ## Request Flow
 
@@ -37,6 +38,7 @@ Included:
 - Static Nginx project.
 - Manual SSH deployment runbook.
 - Reversible Ansible playbook for the VPS setup event.
+- Validation playbooks for current-state checks and guarded on/off/on toggle smoke tests.
 
 Not included:
 

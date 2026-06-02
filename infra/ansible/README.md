@@ -67,6 +67,57 @@ ansible-playbook \
   -e divband_arvan_enabled=false
 ```
 
+## Validate Current Mode
+
+Validate that Arvan mode is actually applied and traffic still works:
+
+```bash
+ansible-playbook \
+  -i infra/ansible/inventory.yml \
+  infra/ansible/playbooks/validate-vps.yml \
+  -e divband_arvan_enabled=true
+```
+
+Validate that non-Arvan mode is actually applied and traffic still works:
+
+```bash
+ansible-playbook \
+  -i infra/ansible/inventory.yml \
+  infra/ansible/playbooks/validate-vps.yml \
+  -e divband_arvan_enabled=false
+```
+
+The validator checks:
+
+- Arvan host pins are present or absent as expected.
+- The Ubuntu apt source points to Arvan or does not, based on the expected mode.
+- Compose uses Arvan-prefixed or normal image names.
+- Docker is active.
+- Both Compose containers are present.
+- `test.divband.com` returns the welcome page.
+- Unknown host routing returns HAProxy 404.
+
+## Toggle Cycle Smoke Test
+
+The full toggle test changes the live VPS through:
+
+```text
+Arvan on -> validate -> Arvan off -> validate -> Arvan on -> validate
+```
+
+It is guarded because the non-Arvan phase may break image pulls or apt on VMs
+that cannot reach global endpoints.
+
+```bash
+ansible-playbook \
+  -i infra/ansible/inventory.yml \
+  infra/ansible/playbooks/toggle-smoke.yml \
+  -e divband_confirm_toggle_cycle=true
+```
+
+Running the playbook without `divband_confirm_toggle_cycle=true` fails before
+touching remote hosts.
+
 ## Useful Overrides
 
 ```bash

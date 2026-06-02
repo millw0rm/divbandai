@@ -1,0 +1,114 @@
+---
+- name: Validate Divband Docker VPS
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    divband_arvan_enabled: true
+    divband_app_dir: /opt/divband
+    divband_domain: test.divband.com
+    divband_unknown_domain: unknown.divband.com
+    divband_ubuntu_sources_path: /etc/apt/sources.list.d/ubuntu.sources
+
+  tasks:
+    - name: Read hosts file
+      ansible.builtin.slurp:
+        src: /etc/hosts
+      register: divband_hosts_file
+
+    - name: Read Ubuntu sources file
+      ansible.builtin.slurp:
+        src: "{{ divband_ubuntu_sources_path }}"
+      register: divband_sources_file
+
+    - name: Read Compose file
+      ansible.builtin.slurp:
+        src: "{{ divband_app_dir }}/docker-compose.yml"
+      register: divband_compose_file
+
+    - name: Decode remote files
+      ansible.builtin.set_fact:
+        divband_hosts_content: "{{ divband_hosts_file.content | b64decode }}"
+        divband_sources_content: "{{ divband_sources_file.content | b64decode }}"
+        divband_compose_content: "{{ divband_compose_file.content | b64decode }}"
+
+    - name: Validate Arvan mode files
+      ansible.builtin.assert:
+        that:
+          - "'BEGIN DIVBAND ARVAN HOST PINS' in divband_hosts_content"
+          - "'mirror.arvancloud.ir' in divband_hosts_content"
+          - "'docker.arvancloud.ir' in divband_hosts_content"
+          - "'URIs: https://mirror.arvancloud.ir/ubuntu/' in divband_sources_content"
+          - "'docker.arvancloud.ir/haproxy:2.9-alpine' in divband_compose_content"
+          - "'docker.arvancloud.ir/nginx:1.27-alpine' in divband_compose_content"
+        fail_msg: "Arvan mode is not fully applied."
+        success_msg: "Arvan mode files are applied."
+      when: divband_arvan_enabled | bool
+
+    - name: Validate non-Arvan mode files
+      ansible.builtin.assert:
+        that:
+          - "'BEGIN DIVBAND ARVAN HOST PINS' not in divband_hosts_content"
+          - "'URIs: https://mirror.arvancloud.ir/ubuntu/' not in divband_sources_content"
+          - "'docker.arvancloud.ir/haproxy:2.9-alpine' not in divband_compose_content"
+          - "'docker.arvancloud.ir/nginx:1.27-alpine' not in divband_compose_content"
+          - "'image: haproxy:2.9-alpine' in divband_compose_content"
+          - "'image: nginx:1.27-alpine' in divband_compose_content"
+        fail_msg: "Non-Arvan mode is not fully applied."
+        success_msg: "Non-Arvan mode files are applied."
+      when: not (divband_arvan_enabled | bool)
+
+    - name: Check Docker service
+      ansible.builtin.systemd:
+        name: docker
+      register: divband_docker_service
+
+    - name: Validate Docker is running
+      ansible.builtin.assert:
+        that:
+          - divband_docker_service.status.ActiveState == "active"
+        fail_msg: "Docker service is not active."
+        success_msg: "Docker service is active."
+
+    - name: Check Compose status
+      ansible.builtin.command:
+        cmd: docker compose ps --format json
+        chdir: "{{ divband_app_dir }}"
+      changed_when: false
+      register: divband_compose_ps
+
+    - name: Validate HAProxy container is running
+      ansible.builtin.assert:
+        that:
+          - "'divband-haproxy' in divband_compose_ps.stdout"
+          - "'divband-test-web' in divband_compose_ps.stdout"
+        fail_msg: "Expected Compose containers are not present."
+        success_msg: "Expected Compose containers are present."
+
+    - name: Smoke test routed test host
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "{{ divband_domain }}"
+        return_content: true
+      register: divband_test_response
+      failed_when:
+        - divband_test_response.status != 200
+          or 'Welcome to test' not in divband_test_response.content
+
+    - name: Smoke test unknown host
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        headers:
+          Host: "{{ divband_unknown_domain }}"
+        return_content: true
+        status_code: 404
+      register: divband_unknown_response
+      failed_when:
+        - divband_unknown_response.status != 404
+          or 'Unknown divband host' not in divband_unknown_response.content
+
+    - name: Show validation result
+      ansible.builtin.debug:
+        msg: "Validated divband_arvan_enabled={{ divband_arvan_enabled | bool }} on {{ inventory_hostname }}."

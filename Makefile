@@ -3,7 +3,7 @@ INVENTORY ?= infra/ansible/inventory.yml
 ANSIBLE_LOCAL_TEMP ?= /tmp/ansible-local
 ANSIBLE_REMOTE_TEMP ?= /tmp/ansible-remote
 
-.PHONY: help up down restart ps logs smoke ansible-arvan ansible-revert
+.PHONY: help up down restart ps logs smoke ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
 
 help:
 	@printf 'Available commands:\n'
@@ -17,6 +17,12 @@ help:
 	@printf '      Apply Arvan apt/registry settings and deploy the VPS stack\n'
 	@printf '  make ansible-revert INVENTORY=infra/ansible/inventory.yml\n'
 	@printf '      Revert Arvan apt/registry settings and redeploy with normal image names\n'
+	@printf '  make ansible-validate-arvan INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Validate the VPS is in Arvan mode and serving traffic\n'
+	@printf '  make ansible-validate-revert INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Validate the VPS is in non-Arvan mode and serving traffic\n'
+	@printf '  make ansible-toggle-smoke INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Run destructive on/off/on toggle validation; requires CONFIRM=true\n'
 
 up:
 	docker compose up -d
@@ -43,3 +49,15 @@ ansible-arvan:
 ansible-revert:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
 	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/vps-docker.yml -e divband_arvan_enabled=false
+
+ansible-validate-arvan:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=true
+
+ansible-validate-revert:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=false
+
+ansible-toggle-smoke:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/toggle-smoke.yml -e divband_confirm_toggle_cycle="$(CONFIRM)"
