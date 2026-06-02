@@ -1,0 +1,99 @@
+---
+- name: Ensure app directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: "0755"
+  loop:
+    - "{{ divband_app_dir }}"
+    - "{{ divband_app_dir }}/config/haproxy"
+    - "{{ divband_app_dir }}/projects"
+  when: divband_deploy_stack | bool
+
+- name: Ensure project directories exist
+  ansible.builtin.file:
+    path: "{{ divband_app_dir }}/projects/{{ item.name }}/html"
+    state: directory
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: "0755"
+  loop: "{{ divband_projects }}"
+  when: divband_deploy_stack | bool
+
+- name: Render Docker Compose stack
+  ansible.builtin.template:
+    src: ../templates/docker-compose.yml.j2
+    dest: "{{ divband_app_dir }}/docker-compose.yml"
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: "0644"
+  when: divband_deploy_stack | bool
+
+- name: Copy project directories
+  ansible.builtin.copy:
+    src: "{{ divband_repo_root }}/projects/{{ item.name }}/"
+    dest: "{{ divband_app_dir }}/projects/{{ item.name }}/"
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: preserve
+  loop: "{{ divband_projects }}"
+  when:
+    - divband_deploy_stack | bool
+    - divband_app_dir != divband_repo_root
+
+- name: Render HAProxy config
+  ansible.builtin.template:
+    src: ../templates/haproxy.cfg.j2
+    dest: "{{ divband_app_dir }}/config/haproxy/haproxy.cfg"
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: "0644"
+  when: divband_deploy_stack | bool
+
+- name: Render Nginx project config
+  ansible.builtin.template:
+    src: ../templates/nginx.conf.j2
+    dest: "{{ divband_app_dir }}/projects/{{ project.name }}/nginx.conf"
+    owner: "{{ divband_app_owner }}"
+    group: "{{ divband_app_group }}"
+    mode: "0644"
+  loop: "{{ divband_projects }}"
+  loop_control:
+    loop_var: project
+  when: divband_deploy_stack | bool
+
+- name: Pull Compose images
+  ansible.builtin.command:
+    cmd: docker compose pull --ignore-buildable
+    chdir: "{{ divband_app_dir }}"
+  changed_when: "'Downloaded newer image' in divband_compose_pull.stdout or 'Pull complete' in divband_compose_pull.stdout"
+  register: divband_compose_pull
+  when: divband_deploy_stack | bool
+
+- name: Build Compose images
+  ansible.builtin.command:
+    cmd: docker compose build
+    chdir: "{{ divband_app_dir }}"
+  changed_when: "'naming to' in divband_compose_build.stdout or 'writing image' in divband_compose_build.stdout or 'Successfully built' in divband_compose_build.stdout"
+  register: divband_compose_build
+  when:
+    - divband_deploy_stack | bool
+    - divband_projects | selectattr('kind', 'defined') | selectattr('kind', 'equalto', 'nextjs') | list | length > 0
+
+- name: Start Compose stack
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ divband_app_dir }}"
+  changed_when: "'Started' in divband_compose_up.stdout or 'Created' in divband_compose_up.stdout or 'Recreated' in divband_compose_up.stdout"
+  register: divband_compose_up
+  when: divband_deploy_stack | bool
+
+- name: Check Compose status
+  ansible.builtin.command:
+    cmd: docker compose ps
+    chdir: "{{ divband_app_dir }}"
+  changed_when: false
+  register: divband_compose_ps
+  when: divband_deploy_stack | bool

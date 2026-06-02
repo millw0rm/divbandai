@@ -14,16 +14,21 @@ defaults
 frontend public_http
     bind *:80
 
-    acl host_test hdr(host) -i {{ divband_domain }}
-    acl host_test_port hdr(host) -i {{ divband_domain }}:80
+{% for project in divband_projects %}
+    acl host_{{ project.name }} hdr(host) -i{% for domain in project.domains %} {{ domain }}{% endfor %}
+    acl host_{{ project.name }}_port hdr(host) -i{% for domain in project.domains %} {{ domain }}:80{% endfor %}
 
-    use_backend test_project if host_test or host_test_port
+    use_backend {{ project.name }}_project if host_{{ project.name }} or host_{{ project.name }}_port
+{% endfor %}
     default_backend unknown_host
 
-backend test_project
+{% for project in divband_projects %}
+backend {{ project.name }}_project
     option httpchk GET /healthz
     http-check expect status 200
-    server test_web test-web:80 check
+    server {{ project.name }}_web {{ project.name }}-web:{{ project.port | default(80) }} check
+
+{% endfor %}
 
 backend unknown_host
     http-request return status 404 content-type text/plain string "Unknown divband host\n"

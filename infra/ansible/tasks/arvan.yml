@@ -1,0 +1,84 @@
+---
+- name: Ensure backup directory exists
+  ansible.builtin.file:
+    path: "{{ divband_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check original hosts backup
+  ansible.builtin.stat:
+    path: "{{ divband_hosts_backup }}"
+  register: divband_hosts_backup_stat
+
+- name: Backup original hosts once
+  ansible.builtin.copy:
+    src: /etc/hosts
+    dest: "{{ divband_hosts_backup }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: not divband_hosts_backup_stat.stat.exists
+
+- name: Check original Ubuntu sources backup
+  ansible.builtin.stat:
+    path: "{{ divband_ubuntu_sources_backup }}"
+  register: divband_sources_backup_stat
+
+- name: Backup original Ubuntu sources once
+  ansible.builtin.copy:
+    src: "{{ divband_ubuntu_sources_path }}"
+    dest: "{{ divband_ubuntu_sources_backup }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not divband_sources_backup_stat.stat.exists
+    - ansible_facts.os_family == "Debian"
+
+- name: Configure Arvan host pins
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} DIVBAND ARVAN HOST PINS"
+    block: |
+      {% for host in divband_arvan_hosts %}
+      {{ host.ip }} {{ host.names | join(' ') }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+  when: divband_arvan_enabled | bool
+
+- name: Remove Arvan host pins
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} DIVBAND ARVAN HOST PINS"
+    state: absent
+  when: not (divband_arvan_enabled | bool)
+
+- name: Configure Arvan Ubuntu mirror
+  ansible.builtin.template:
+    src: ../templates/ubuntu.sources.arvan.j2
+    dest: "{{ divband_ubuntu_sources_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - divband_arvan_enabled | bool
+    - ansible_facts.os_family == "Debian"
+
+- name: Restore original Ubuntu sources
+  ansible.builtin.copy:
+    src: "{{ divband_ubuntu_sources_backup }}"
+    dest: "{{ divband_ubuntu_sources_path }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not (divband_arvan_enabled | bool)
+    - ansible_facts.os_family == "Debian"
+    - divband_sources_backup_stat.stat.exists

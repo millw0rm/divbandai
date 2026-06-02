@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name {{ divband_domain }};
+    server_name {{ project.domains | join(' ') }};
 
     root /usr/share/nginx/html;
     index index.html;

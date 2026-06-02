@@ -1,9 +1,13 @@
 .DEFAULT_GOAL := help
 INVENTORY ?= infra/ansible/inventory.yml
+ANSIBLE_PLAYBOOK ?= .venv-ansible/bin/ansible-playbook
 ANSIBLE_LOCAL_TEMP ?= /tmp/ansible-local
 ANSIBLE_REMOTE_TEMP ?= /tmp/ansible-remote
+KIND ?= static
+API_HOST ?= 127.0.0.1
+API_PORT ?= 8080
 
-.PHONY: help up down restart ps logs smoke ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
+.PHONY: help up down restart ps logs smoke project api ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
 
 help:
 	@printf 'Available commands:\n'
@@ -12,14 +16,22 @@ help:
 	@printf '  make restart  Recreate the stack\n'
 	@printf '  make ps       Show container status\n'
 	@printf '  make logs     Follow container logs\n'
-	@printf '  make smoke    Verify test.divband.com routing locally\n'
-	@printf '  make ansible-arvan INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Apply Arvan apt/registry settings and deploy the VPS stack\n'
-	@printf '  make ansible-revert INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Revert Arvan apt/registry settings and redeploy with normal image names\n'
-	@printf '  make ansible-validate-arvan INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '  make smoke    Verify Divband public host routing locally\n'
+	@printf '  make project NAME=test\n'
+	@printf '      Create or refresh a project and route NAME.divbandai.ir; set KIND=nextjs for Next.js\n'
+	@printf '  make api\n'
+	@printf '      Run the local project creation API on API_HOST:API_PORT\n'
+	@printf '  make ansible-local\n'
+	@printf '      Install Docker if needed, render configs, and run the local stack\n'
+	@printf '  make ansible-local-validate\n'
+	@printf '      Validate Docker, Compose, HAProxy, and routing on localhost\n'
+	@printf '  make ansible-remote INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Apply remote package/registry setup and deploy the VPS stack\n'
+	@printf '  make ansible-remote-revert INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Revert remote Arvan apt/registry settings and redeploy normal image names\n'
+	@printf '  make ansible-remote-validate INVENTORY=infra/ansible/inventory.yml\n'
 	@printf '      Validate the VPS is in Arvan mode and serving traffic\n'
-	@printf '  make ansible-validate-revert INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '  make ansible-remote-validate-revert INVENTORY=infra/ansible/inventory.yml\n'
 	@printf '      Validate the VPS is in non-Arvan mode and serving traffic\n'
 	@printf '  make ansible-toggle-smoke INVENTORY=infra/ansible/inventory.yml\n'
 	@printf '      Run destructive on/off/on toggle validation; requires CONFIRM=true\n'
@@ -40,24 +52,47 @@ logs:
 	docker compose logs -f
 
 smoke:
-	curl -fsS -H "Host: test.divband.com" http://127.0.0.1/ | grep -q "Welcome to test"
+	scripts/smoke-projects.sh
 
-ansible-arvan:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/vps-docker.yml -e divband_arvan_enabled=true
+project:
+	@test -n "$(NAME)" || (printf 'NAME is required, e.g. make project NAME=test\n' >&2; exit 2)
+	scripts/create-project.py "$(NAME)" --kind "$(KIND)"
 
-ansible-revert:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/vps-docker.yml -e divband_arvan_enabled=false
+api:
+	DIVBAND_API_HOST="$(API_HOST)" DIVBAND_API_PORT="$(API_PORT)" scripts/project-api.py
 
-ansible-validate-arvan:
+ansible-local:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=true
+	"$(ANSIBLE_PLAYBOOK)" infra/ansible/playbooks/local-docker.yml
 
-ansible-validate-revert:
+ansible-local-validate:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=false
+	"$(ANSIBLE_PLAYBOOK)" infra/ansible/playbooks/validate-local.yml
+
+ansible-remote:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/remote-docker.yml -e divband_arvan_enabled=true
+
+ansible-remote-revert:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/remote-docker.yml -e divband_arvan_enabled=false
+
+ansible-remote-validate:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=true
+
+ansible-remote-validate-revert:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=false
+
+ansible-arvan: ansible-remote
+
+ansible-revert: ansible-remote-revert
+
+ansible-validate-arvan: ansible-remote-validate
+
+ansible-validate-revert: ansible-remote-validate-revert
 
 ansible-toggle-smoke:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/toggle-smoke.yml -e divband_confirm_toggle_cycle="$(CONFIRM)"
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/toggle-smoke.yml -e divband_confirm_toggle_cycle="$(CONFIRM)"

@@ -1,0 +1,40 @@
+---
+- name: Manage Divband remote Docker environment
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../vars/common.yml
+    - ../vars/projects.yml
+
+  vars:
+    divband_environment: remote
+    divband_repo_root: "{{ playbook_dir }}/../../.."
+    divband_app_dir: /opt/divband
+    divband_app_owner: "{{ ansible_user | default('ubuntu') }}"
+    divband_app_group: "{{ ansible_user | default('ubuntu') }}"
+
+  tasks:
+    - name: Require explicit remote Arvan mode
+      ansible.builtin.assert:
+        that:
+          - divband_arvan_enabled is defined
+        fail_msg: "Set divband_arvan_enabled=true or divband_arvan_enabled=false for remote deployments."
+
+    - name: Configure remote package and registry reachability
+      ansible.builtin.include_tasks: ../tasks/arvan.yml
+
+    - name: Install and start Docker
+      ansible.builtin.include_tasks: ../tasks/docker-debian.yml
+
+    - name: Render project config and run remote stack
+      ansible.builtin.include_tasks: ../tasks/project-stack.yml
+
+    - name: Smoke test remote stack routing
+      ansible.builtin.include_tasks: ../tasks/smoke.yml
+
+    - name: Show Compose status
+      ansible.builtin.debug:
+        var: divband_compose_ps.stdout_lines
+      when: divband_deploy_stack | bool

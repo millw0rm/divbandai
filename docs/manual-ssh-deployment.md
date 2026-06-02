@@ -8,7 +8,7 @@ Ansible role.
 
 - The VM runs Ubuntu 22.04 or newer.
 - You can SSH as a sudo-capable user.
-- DNS for `test.divband.com` points to the VM public IP.
+- DNS for `divbandai.ir` and `test.divbandai.ir` points to the VM public IP.
 - Ports `22` and `80` are allowed by the cloud firewall and the VM firewall.
 - Docker Engine with the Compose v2 plugin is installed or can be installed.
 - If the VM cannot reach global Ubuntu/Docker endpoints, use the Arvan mirror
@@ -151,13 +151,14 @@ Expected containers:
 On the VM:
 
 ```bash
-curl -i -H "Host: test.divband.com" http://127.0.0.1/
+curl -i -H "Host: divbandai.ir" http://127.0.0.1/
+curl -i -H "Host: test.divbandai.ir" http://127.0.0.1/
 curl -i -H "Host: unknown.divband.com" http://127.0.0.1/
 ```
 
 Expected results:
 
-- `test.divband.com` returns HTTP 200 and `Welcome to test`.
+- `divbandai.ir` and `test.divbandai.ir` return HTTP 200 and `Welcome to test`.
 - Unknown hosts return HTTP 404 and `Unknown divband host`.
 
 Check container logs if routing fails:
@@ -172,13 +173,15 @@ docker compose logs test-web
 From your local machine:
 
 ```bash
-curl -i http://test.divband.com/
+curl -i http://divbandai.ir/
+curl -i http://test.divbandai.ir/
 ```
 
 If DNS is not ready yet:
 
 ```bash
-curl -i --resolve test.divband.com:80:${VM_HOST} http://test.divband.com/
+curl -i --resolve divbandai.ir:80:${VM_HOST} http://divbandai.ir/
+curl -i --resolve test.divbandai.ir:80:${VM_HOST} http://test.divbandai.ir/
 ```
 
 ## 8. Change Management Notes
@@ -204,7 +207,7 @@ git log --oneline -5
 git switch docker-haproxy-test-entrypoint
 git reset --hard <known-good-commit>
 docker compose up -d
-curl -i -H "Host: test.divband.com" http://127.0.0.1/
+curl -i -H "Host: divbandai.ir" http://127.0.0.1/
 ```
 
 Use `git reset --hard` only on the VM deployment checkout after confirming there

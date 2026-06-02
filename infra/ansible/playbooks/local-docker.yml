@@ -1,0 +1,28 @@
+---
+- name: Manage Divband local Docker environment
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: true
+
+  vars_files:
+    - ../vars/common.yml
+    - ../vars/projects.yml
+
+  vars:
+    divband_environment: local
+    divband_arvan_enabled: false
+    divband_repo_root: "{{ playbook_dir }}/../../.."
+    divband_app_dir: "{{ divband_repo_root }}"
+    divband_app_owner: "{{ lookup('env', 'USER') | default('ubuntu', true) }}"
+    divband_app_group: "{{ lookup('env', 'USER') | default('ubuntu', true) }}"
+
+  tasks:
+    - name: Install and start Docker
+      ansible.builtin.include_tasks: ../tasks/docker-debian.yml
+
+    - name: Render project config and run local stack
+      ansible.builtin.include_tasks: ../tasks/project-stack.yml
+
+    - name: Smoke test local stack routing
+      ansible.builtin.include_tasks: ../tasks/smoke.yml

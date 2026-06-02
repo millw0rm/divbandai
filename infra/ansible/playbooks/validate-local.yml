@@ -1,0 +1,52 @@
+---
+- name: Validate Divband local Docker environment
+  hosts: localhost
+  connection: local
+  become: true
+  gather_facts: false
+
+  vars_files:
+    - ../vars/common.yml
+    - ../vars/projects.yml
+
+  vars:
+    divband_repo_root: "{{ playbook_dir }}/../../.."
+    divband_app_dir: "{{ divband_repo_root }}"
+
+  tasks:
+    - name: Check Docker service
+      ansible.builtin.systemd:
+        name: docker
+      register: divband_docker_service
+
+    - name: Validate Docker is running
+      ansible.builtin.assert:
+        that:
+          - divband_docker_service.status.ActiveState == "active"
+        fail_msg: "Docker service is not active."
+        success_msg: "Docker service is active."
+
+    - name: Check Compose status
+      ansible.builtin.command:
+        cmd: docker compose ps --format json
+        chdir: "{{ divband_app_dir }}"
+      changed_when: false
+      register: divband_compose_ps
+
+    - name: Validate Compose containers are running
+      ansible.builtin.assert:
+        that:
+          - "'divband-haproxy' in divband_compose_ps.stdout"
+        fail_msg: "Expected Compose containers are not present."
+        success_msg: "HAProxy container is present."
+
+    - name: Validate project containers are running
+      ansible.builtin.assert:
+        that:
+          - "'divband-' ~ item.name ~ '-web' in divband_compose_ps.stdout"
+        fail_msg: "Expected project container divband-{{ item.name }}-web is not present."
+        success_msg: "Project container divband-{{ item.name }}-web is present."
+      loop: "{{ divband_projects }}"
+
+    - name: Smoke test local stack routing
+      ansible.builtin.include_tasks: ../tasks/smoke.yml

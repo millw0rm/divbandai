@@ -5,13 +5,19 @@
   gather_facts: false
 
   vars:
-    divband_arvan_enabled: true
     divband_app_dir: /opt/divband
-    divband_domain: test.divband.com
-    divband_unknown_domain: unknown.divband.com
-    divband_ubuntu_sources_path: /etc/apt/sources.list.d/ubuntu.sources
+
+  vars_files:
+    - ../vars/common.yml
+    - ../vars/projects.yml
 
   tasks:
+    - name: Require expected remote Arvan mode
+      ansible.builtin.assert:
+        that:
+          - divband_arvan_enabled is defined
+        fail_msg: "Set divband_arvan_enabled=true or divband_arvan_enabled=false for remote validation."
+
     - name: Read hosts file
       ansible.builtin.slurp:
         src: /etc/hosts
@@ -78,36 +84,23 @@
       changed_when: false
       register: divband_compose_ps
 
-    - name: Validate HAProxy container is running
+    - name: Validate Compose containers are running
       ansible.builtin.assert:
         that:
           - "'divband-haproxy' in divband_compose_ps.stdout"
-          - "'divband-test-web' in divband_compose_ps.stdout"
         fail_msg: "Expected Compose containers are not present."
-        success_msg: "Expected Compose containers are present."
+        success_msg: "HAProxy container is present."
 
-    - name: Smoke test routed test host
-      ansible.builtin.uri:
-        url: http://127.0.0.1/
-        headers:
-          Host: "{{ divband_domain }}"
-        return_content: true
-      register: divband_test_response
-      failed_when:
-        - divband_test_response.status != 200
-          or 'Welcome to test' not in divband_test_response.content
+    - name: Validate project containers are running
+      ansible.builtin.assert:
+        that:
+          - "'divband-' ~ item.name ~ '-web' in divband_compose_ps.stdout"
+        fail_msg: "Expected project container divband-{{ item.name }}-web is not present."
+        success_msg: "Project container divband-{{ item.name }}-web is present."
+      loop: "{{ divband_projects }}"
 
-    - name: Smoke test unknown host
-      ansible.builtin.uri:
-        url: http://127.0.0.1/
-        headers:
-          Host: "{{ divband_unknown_domain }}"
-        return_content: true
-        status_code: 404
-      register: divband_unknown_response
-      failed_when:
-        - divband_unknown_response.status != 404
-          or 'Unknown divband host' not in divband_unknown_response.content
+    - name: Smoke test remote stack routing
+      ansible.builtin.include_tasks: ../tasks/smoke.yml
 
     - name: Show validation result
       ansible.builtin.debug:

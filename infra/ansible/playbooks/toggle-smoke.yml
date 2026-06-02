@@ -14,7 +14,7 @@
           Re-run with -e divband_confirm_toggle_cycle=true to execute it.
 
 - name: Apply Arvan mode
-  ansible.builtin.import_playbook: vps-docker.yml
+  ansible.builtin.import_playbook: remote-docker.yml
   vars:
     divband_arvan_enabled: true
 
@@ -24,7 +24,7 @@
     divband_arvan_enabled: true
 
 - name: Apply non-Arvan mode
-  ansible.builtin.import_playbook: vps-docker.yml
+  ansible.builtin.import_playbook: remote-docker.yml
   vars:
     divband_arvan_enabled: false
     divband_install_docker: false
@@ -36,7 +36,7 @@
     divband_arvan_enabled: false
 
 - name: Restore Arvan mode
-  ansible.builtin.import_playbook: vps-docker.yml
+  ansible.builtin.import_playbook: remote-docker.yml
   vars:
     divband_arvan_enabled: true
     divband_install_docker: true

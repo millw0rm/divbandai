@@ -1,8 +1,62 @@
-# Divband VPS Ansible
+# Divband Ansible
 
-This directory captures the manual VPS setup as reversible Ansible automation.
-It is intentionally small and only covers the current Docker + HAProxy test
-stack.
+This directory separates local and remote environment setup while sharing the
+same Docker + HAProxy project configuration.
+
+## Environment Entry Points
+
+| Environment | Playbook | Purpose |
+| --- | --- | --- |
+| Local | `playbooks/local-docker.yml` | Install/start Docker if requested, render project configs into the checkout, run the Compose stack, and smoke-test localhost routing. |
+| Remote | `playbooks/remote-docker.yml` | Prepare the VPS package/registry path, install/start Docker, render `/opt/divband`, run the Compose stack, and smoke-test remote localhost routing. |
+| Remote compatibility | `playbooks/vps-docker.yml` | Backward-compatible wrapper for `remote-docker.yml`. |
+
+The shared pieces live under:
+
+- `vars/common.yml` for hostnames, package names, and defaults.
+- `vars/projects.yml` for the routed project list.
+- `tasks/docker-debian.yml` for Docker package installation and service state.
+- `tasks/project-stack.yml` for Docker Compose, HAProxy, Nginx, and static page deployment.
+- `tasks/smoke.yml` for host-header routing checks.
+- `tasks/arvan.yml` for the remote-only Arvan mirror/registry workaround.
+
+## Project Generator
+
+Create or refresh a static project before deploying:
+
+```bash
+make project NAME=test
+```
+
+Use `KIND=nextjs` when the domain should route to a buildable Next.js
+container instead of an Nginx static site:
+
+```bash
+make project NAME=test2 KIND=nextjs
+```
+
+This writes:
+
+- `projects/<name>/html/index.html`
+- `projects/<name>/nginx.conf`
+- `infra/ansible/vars/projects.yml`
+- checked-in local `docker-compose.yml`
+- checked-in local `config/haproxy/haproxy.cfg`
+
+By default, `NAME=app` routes `app.divbandai.ir`. The existing `test` project
+also keeps the apex and `www` domains routed to the same welcome page.
+
+The same workflow is available over a local administrative HTTP API:
+
+```bash
+make api
+curl -X POST http://127.0.0.1:8080/projects \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"app","kind":"static"}'
+```
+
+Set `DIVBAND_API_TOKEN` before running `make api` to require bearer-token
+authentication on project and deploy endpoints.
 
 ## Why This Exists
 
@@ -29,7 +83,7 @@ The manual fix was:
 3. Install Docker from Ubuntu packages available through that mirror.
 4. Pull runtime images through `docker.arvancloud.ir`.
 
-This playbook exists so that fix is no longer an undocumented one-off VM
+The remote playbook exists so that fix is no longer an undocumented one-off VM
 mutation. It makes the change repeatable, reviewable, and reversible:
 
 - The Arvan behavior is behind `divband_arvan_enabled=true`.
@@ -39,9 +93,8 @@ mutation. It makes the change repeatable, reviewable, and reversible:
 - Validation playbooks assert that the selected mode is actually applied before
   we trust the VPS state.
 
-This is still not a broad platform automation layer. It is a narrow record of
-the Docker/HAProxy VPS bootstrap event and the network workaround that made it
-deployable.
+This is still not a broad platform automation layer. It is a narrow Docker and
+HAProxy bootstrap layer with separate local and remote entrypoints.
 
 ## What It Manages
 
@@ -52,7 +105,7 @@ deployable.
 - Docker installation from Ubuntu packages.
 - `/opt/divband` project files.
 - Docker Compose stack startup.
-- Smoke checks for `test.divband.com` and unknown host routing.
+- Smoke checks for the configured Divband public hosts and unknown host routing.
 
 ## Toggle
 
@@ -85,13 +138,41 @@ all:
 `infra/ansible/inventory.yml` is gitignored by convention; keep real VM details
 there when they become sensitive.
 
-## Apply Arvan Setup and Deploy
+## Local Setup and Deploy
+
+This targets the machine running Ansible. It renders the same HAProxy and Nginx
+configs into the repository checkout and starts the local Compose stack.
+
+```bash
+ansible-playbook infra/ansible/playbooks/local-docker.yml
+```
+
+Validate the local stack:
+
+```bash
+ansible-playbook infra/ansible/playbooks/validate-local.yml
+```
+
+The Makefile aliases are:
+
+```bash
+make ansible-local
+make ansible-local-validate
+```
+
+## Remote Arvan Setup and Deploy
 
 ```bash
 ansible-playbook \
   -i infra/ansible/inventory.yml \
-  infra/ansible/playbooks/vps-docker.yml \
+  infra/ansible/playbooks/remote-docker.yml \
   -e divband_arvan_enabled=true
+```
+
+The Makefile alias is:
+
+```bash
+make ansible-remote INVENTORY=infra/ansible/inventory.yml
 ```
 
 ## Revert Arvan Setup
@@ -102,8 +183,14 @@ configuration and renders Compose with normal image names.
 ```bash
 ansible-playbook \
   -i infra/ansible/inventory.yml \
-  infra/ansible/playbooks/vps-docker.yml \
+  infra/ansible/playbooks/remote-docker.yml \
   -e divband_arvan_enabled=false
+```
+
+The Makefile alias is:
+
+```bash
+make ansible-remote-revert INVENTORY=infra/ansible/inventory.yml
 ```
 
 ## Validate Current Mode
@@ -117,6 +204,12 @@ ansible-playbook \
   -e divband_arvan_enabled=true
 ```
 
+Or:
+
+```bash
+make ansible-remote-validate INVENTORY=infra/ansible/inventory.yml
+```
+
 Validate that non-Arvan mode is actually applied and traffic still works:
 
 ```bash
@@ -126,6 +219,12 @@ ansible-playbook \
   -e divband_arvan_enabled=false
 ```
 
+Or:
+
+```bash
+make ansible-remote-validate-revert INVENTORY=infra/ansible/inventory.yml
+```
+
 The validator checks:
 
 - Arvan host pins are present or absent as expected.
@@ -133,7 +232,7 @@ The validator checks:
 - Compose uses Arvan-prefixed or normal image names.
 - Docker is active.
 - Both Compose containers are present.
-- `test.divband.com` returns the welcome page.
+- `divbandai.ir`, `www.divbandai.ir`, and `test.divbandai.ir` return the welcome page.
 - Unknown host routing returns HAProxy 404.
 
 ## Toggle Cycle Smoke Test
@@ -162,7 +261,7 @@ touching remote hosts.
 ```bash
 ansible-playbook \
   -i infra/ansible/inventory.yml \
-  infra/ansible/playbooks/vps-docker.yml \
+  infra/ansible/playbooks/remote-docker.yml \
   -e divband_arvan_enabled=true \
   -e divband_install_docker=false \
   -e divband_deploy_stack=true
@@ -173,5 +272,5 @@ ansible-playbook \
 | `divband_arvan_enabled` | `true` | Toggle Arvan mirror and registry behavior. |
 | `divband_install_docker` | `true` | Install Docker packages with apt. |
 | `divband_deploy_stack` | `true` | Upload files and run `docker compose up -d`. |
-| `divband_app_dir` | `/opt/divband` | Remote project directory. |
-| `divband_domain` | `test.divband.com` | Host header routed to the test project. |
+| `divband_app_dir` | `/opt/divband` remote, repo root local | Project directory. |
+| `divband_domains` | `divbandai.ir`, `www.divbandai.ir`, `test.divbandai.ir` | Host headers routed to the test project. |

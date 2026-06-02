@@ -1,0 +1,14 @@
+---
+divband_projects:
+- name: test
+  domains:
+  - divbandai.ir
+  - www.divbandai.ir
+  - test.divbandai.ir
+  kind: static
+  port: 80
+- name: test2
+  kind: nextjs
+  port: 3000
+  domains:
+  - test2.divbandai.ir
