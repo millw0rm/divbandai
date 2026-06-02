@@ -3,6 +3,8 @@
 For a full platform overview (API, project kinds, provisioning flows, and
 operations), see [platform-guide.md](platform-guide.md).
 
+**Setup from scratch:** [getting-started.md](getting-started.md)
+
 This branch keeps only the infrastructure needed to prove the first public
 traffic path.
 

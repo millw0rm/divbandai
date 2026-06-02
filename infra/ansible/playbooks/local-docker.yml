@@ -2,7 +2,7 @@
 - name: Manage Divband local Docker environment
   hosts: localhost
   connection: local
-  become: true
+  become: false
   gather_facts: true
 
   vars_files:
@@ -19,7 +19,9 @@
 
   tasks:
     - name: Install and start Docker
+      become: true
       ansible.builtin.include_tasks: ../tasks/docker-debian.yml
+      when: divband_install_docker | bool
 
     - name: Render project config and run local stack
       ansible.builtin.include_tasks: ../tasks/project-stack.yml

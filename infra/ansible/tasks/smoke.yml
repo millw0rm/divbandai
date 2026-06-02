@@ -5,6 +5,7 @@
     headers:
       Host: "{{ item.1 }}"
     return_content: true
+    use_proxy: false
   register: divband_test_response
   failed_when:
     - divband_test_response.status != 200
@@ -19,6 +20,7 @@
       Host: "{{ divband_unknown_domain }}"
     return_content: true
     status_code: 404
+    use_proxy: false
   register: divband_unknown_response
   failed_when:
     - divband_unknown_response.status != 404

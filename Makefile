@@ -7,7 +7,7 @@ KIND ?= static
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8080
 
-.PHONY: help up down restart ps logs smoke project project-delete api test-api ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
+.PHONY: help up down restart ps logs smoke project project-delete api test-api test-all setup-ansible-sudo ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
 
 help:
 	@printf 'Available commands:\n'
@@ -17,6 +17,10 @@ help:
 	@printf '  make ps       Show container status\n'
 	@printf '  make logs     Follow container logs\n'
 	@printf '  make smoke    Verify Divband public host routing locally\n'
+	@printf '  make test-api Run Python unit tests\n'
+	@printf '  make test-all Run unit tests, smoke checks, and local Ansible validation\n'
+	@printf '  make setup-ansible-sudo\n'
+	@printf '      Install passwordless sudo for local Ansible playbooks (run once)\n'
 	@printf '  make project NAME=test\n'
 	@printf '      Create or refresh a project and route NAME.divbandai.ir; set KIND=nextjs for Next.js\n'
 	@printf '  make project-delete NAME=test\n'
@@ -66,6 +70,11 @@ project-delete:
 
 test-api:
 	python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+test-all: test-api smoke ansible-local-validate
+
+setup-ansible-sudo:
+	scripts/setup-ansible-sudo.sh
 
 api:
 	DIVBAND_API_HOST="$(API_HOST)" DIVBAND_API_PORT="$(API_PORT)" scripts/project-api.py

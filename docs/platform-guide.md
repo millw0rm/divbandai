@@ -1,5 +1,8 @@
 # Divband Platform Guide
 
+**New here?** Start with the step-by-step setup guide:
+[getting-started.md](getting-started.md).
+
 This document describes **divband** (repository: `divbandai`): a small infrastructure stack and **project provisioning API** that lets a caller create Docker-backed web services, wire them into **HAProxy** by hostname, and populate each service with a chosen runtime (**Nginx static site** or **Next.js**).
 
 The design goal is repeatable, single-VM hosting: one public HTTP entrypoint, many projects behind host-based routing, with generated configs kept in git and deployable by hand, Make, HTTP API, or Ansible.
@@ -453,6 +456,7 @@ Ansible templates (`haproxy.cfg.j2`, `docker-compose.yml.j2`, `nginx.conf.j2`) i
 │   ├── project-api.py              # HTTP control plane
 │   └── smoke-projects.sh           # Host-header smoke tests
 ├── docs/
+│   ├── getting-started.md          # Step-by-step local + VPS setup
 │   ├── platform-guide.md           # This document
 │   ├── architecture.md
 │   └── manual-ssh-deployment.md

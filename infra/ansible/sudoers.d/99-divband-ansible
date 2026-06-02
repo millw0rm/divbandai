@@ -1,0 +1,3 @@
+# Allow passwordless sudo for local Divband Ansible playbooks.
+# Install with: make setup-ansible-sudo
+ubuntu ALL=(ALL) NOPASSWD: ALL

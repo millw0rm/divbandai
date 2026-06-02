@@ -13,6 +13,6 @@ for project in data.get("divband_projects", []):
         print(f"{domain}\t{expected}")
 PY
 while IFS=$'\t' read -r domain expected; do
-  curl -fsS -H "Host: ${domain}" http://127.0.0.1/ | grep -q "${expected}"
+  curl --noproxy '*' -fsS -H "Host: ${domain}" http://127.0.0.1/ | grep -q "${expected}"
   printf 'ok %s\n' "${domain}"
 done

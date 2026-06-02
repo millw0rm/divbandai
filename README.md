@@ -17,7 +17,7 @@ routes, and project scaffolds (Nginx static or Next.js). Ansible covers VPS
 bootstrap: Arvan mirror/registry toggles, Docker install, Compose deploy, and
 smoke tests.
 
-**Full documentation:** [docs/platform-guide.md](docs/platform-guide.md)
+**Full documentation:** [docs/getting-started.md](docs/getting-started.md) · [docs/platform-guide.md](docs/platform-guide.md)
 
 ## Repository Map
 
@@ -34,6 +34,8 @@ smoke tests.
 │       └── html/
 │           └── index.html
 ├── docs/
+│   ├── getting-started.md
+│   ├── platform-guide.md
 │   ├── architecture.md
 │   └── manual-ssh-deployment.md
 ├── scripts/

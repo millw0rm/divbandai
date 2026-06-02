@@ -2,7 +2,7 @@
 - name: Validate Divband local Docker environment
   hosts: localhost
   connection: local
-  become: true
+  become: false
   gather_facts: false
 
   vars_files:
@@ -14,17 +14,20 @@
     divband_app_dir: "{{ divband_repo_root }}"
 
   tasks:
-    - name: Check Docker service
-      ansible.builtin.systemd:
-        name: docker
-      register: divband_docker_service
+    - name: Check Docker daemon is reachable
+      ansible.builtin.command:
+        cmd: docker info
+      changed_when: false
+      register: divband_docker_info
 
     - name: Validate Docker is running
       ansible.builtin.assert:
         that:
-          - divband_docker_service.status.ActiveState == "active"
-        fail_msg: "Docker service is not active."
-        success_msg: "Docker service is active."
+          - divband_docker_info.rc == 0
+        fail_msg: >-
+          Docker daemon is not reachable. Ensure Docker is installed, the service
+          is running, and your user is in the docker group.
+        success_msg: "Docker daemon is reachable."
 
     - name: Check Compose status
       ansible.builtin.command:
