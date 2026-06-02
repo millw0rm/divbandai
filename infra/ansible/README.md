@@ -4,6 +4,45 @@ This directory captures the manual VPS setup as reversible Ansible automation.
 It is intentionally small and only covers the current Docker + HAProxy test
 stack.
 
+## Why This Exists
+
+The first VPS setup for `94.101.178.146` exposed an infrastructure constraint:
+the VM accepted inbound SSH, but default outbound package and registry paths were
+not usable.
+
+Observed during setup:
+
+- `apt-get update` against `archive.ubuntu.com` and `security.ubuntu.com`
+  failed because the VM could not resolve those hostnames.
+- Changing the VM resolver to public DNS did not fix the issue.
+- Raw outbound checks to public internet targets such as `1.1.1.1` and
+  `8.8.8.8` failed.
+- Direct connectivity to Arvan CDN IPs worked.
+- `docker.arvancloud.ir` responded correctly when pinned to reachable Arvan IPs.
+- `https://mirror.arvancloud.ir/ubuntu/` was reachable and could serve Ubuntu
+  package indexes.
+
+The manual fix was:
+
+1. Pin Arvan hostnames in `/etc/hosts`.
+2. Move Ubuntu apt sources to the Arvan mirror.
+3. Install Docker from Ubuntu packages available through that mirror.
+4. Pull runtime images through `docker.arvancloud.ir`.
+
+This playbook exists so that fix is no longer an undocumented one-off VM
+mutation. It makes the change repeatable, reviewable, and reversible:
+
+- The Arvan behavior is behind `divband_arvan_enabled=true`.
+- Revert behavior is behind `divband_arvan_enabled=false`.
+- Original `/etc/hosts` and Ubuntu source files are backed up under
+  `/etc/divband/backups`.
+- Validation playbooks assert that the selected mode is actually applied before
+  we trust the VPS state.
+
+This is still not a broad platform automation layer. It is a narrow record of
+the Docker/HAProxy VPS bootstrap event and the network workaround that made it
+deployable.
+
 ## What It Manages
 
 - Optional Arvan host pins for:
