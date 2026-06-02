@@ -10,8 +10,9 @@ The current deployable system is:
 - Host routing for `divbandai.ir`, `www.divbandai.ir`, and `test.divbandai.ir`.
 - Container images pulled through `docker.arvancloud.ir`.
 
-There is no Kubernetes, Terraform, GitLab CI, or runner automation in this
-branch. Provisioning is handled by a **local Project API** and
+There is no Kubernetes or Terraform in this branch. **GitHub Actions** runs CI
+and production deploys; see [docs/ci-cd.md](docs/ci-cd.md). Provisioning is
+handled by a **local Project API** and
 `scripts/create-project.py`, which generate Docker Compose services, HAProxy
 routes, and project scaffolds (Nginx static or Next.js). Ansible covers VPS
 bootstrap: Arvan mirror/registry toggles, Docker install, Compose deploy, and
@@ -134,6 +135,22 @@ For local-only testing, add this to `/etc/hosts`:
 ```
 
 Then open `http://divbandai.ir/` or `http://test.divbandai.ir/`.
+
+## CI/CD
+
+Full setup: [docs/ci-cd.md](docs/ci-cd.md). One command on your machine:
+
+```bash
+make setup-github-actions   # uses gh CLI; see .github/setup.env.example
+```
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `ci.yml` | Push and PRs to `main` | Tests, Docker smoke, Ansible validate-local; **auto-deploy** on push to `main` |
+| `deploy.yml` | Manual | Same VPS deploy without waiting for CI |
+
+Configure the GitHub **`production`** environment with secrets
+`DIVBAND_SSH_PRIVATE_KEY`, `DIVBAND_VPS_HOST`, and optional `DIVBAND_VPS_USER`.
 
 ## VM Deployment
 

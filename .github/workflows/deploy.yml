@@ -1,0 +1,43 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      arvan_enabled:
+        description: Enable Arvan mirror and registry on the VPS
+        type: boolean
+        default: true
+      validate_after_deploy:
+        description: Run validate-vps playbook after deploy
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install Ansible
+        run: pip install --disable-pip-version-check -r requirements-ci.txt
+
+      - name: Deploy to VPS
+        uses: ./.github/actions/deploy-vps
+        with:
+          arvan_enabled: ${{ inputs.arvan_enabled }}
+          validate_after_deploy: ${{ inputs.validate_after_deploy }}
+          ssh_private_key: ${{ secrets.DIVBAND_SSH_PRIVATE_KEY }}
+          vps_host: ${{ secrets.DIVBAND_VPS_HOST }}
+          vps_user: ${{ secrets.DIVBAND_VPS_USER || 'ubuntu' }}

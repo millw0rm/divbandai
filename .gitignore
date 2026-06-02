@@ -5,7 +5,9 @@ dist/
 .secrets/
 .tools/
 .venv-ansible/
+.venv-ci/
 .divband/
+.github/setup.env
 backups/
 projects/*/.env
 projects/*/secrets/
