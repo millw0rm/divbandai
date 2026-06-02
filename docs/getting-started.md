@@ -376,7 +376,7 @@ Expected for hostnames not in `projects.yml`. HAProxy responds with
 
 ## Next steps
 
-- [ci-cd.md](ci-cd.md) — GitHub Actions CI, auto-deploy, and production secrets
+- [ci-cd.md](ci-cd.md) — GitHub Actions, GHCR, and VPS pull deploy
 - [platform-guide.md](platform-guide.md) — full platform reference
 - [architecture.md](architecture.md) — request flow and component map
 - [manual-ssh-deployment.md](manual-ssh-deployment.md) — manual VPS runbook

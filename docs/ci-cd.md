@@ -1,162 +1,113 @@
 # CI/CD with GitHub Actions
 
-Divband uses GitHub Actions for continuous integration and production deployment
-to the VPS. **Buildable** projects (`nextjs`, `node`, `python`, `docker`) are built
-in CI, pushed to **GitHub Container Registry (GHCR)**, and pulled on the VPS by tag
-(usually the commit SHA). Static sites still use the Nginx image plus mounted HTML.
+Divband uses a **pull-based** deployment model:
+
+```text
+GitHub Actions (cloud)                 Production VPS
+──────────────────────                 ──────────────
+test → build → push GHCR    ──POST──►  deploy webhook
+                                         git checkout SHA
+                                         pull ghcr.io/...:<sha>
+                                         docker compose up -d
+```
+
+GitHub never SSHes into the server for releases. The VPS pulls images and
+restarts the stack over **outbound** HTTPS to GHCR.
 
 ## Workflows
 
-| Workflow | File | When it runs |
+| Workflow | When | Purpose |
 | --- | --- | --- |
-| CI | `.github/workflows/ci.yml` | Every push and pull request to `main` / `master` |
-| Deploy | `.github/workflows/deploy.yml` | Manual **Run workflow**, or automatically after CI on `main` |
+| `ci.yml` | Push / PR to `main` | Tests, GHCR publish, integration smoke, **webhook deploy** on `main` |
+| `deploy.yml` | Manual | Trigger the same VPS webhook for a chosen SHA |
 
-### CI pipeline
+### CI jobs
 
-1. **unit-tests** — `make test-api` (Python 3.12, PyYAML).
-2. **publish-images** — build each buildable project and push to `ghcr.io/<owner>/divband-<name>:<sha>` (and `:main` on `main`).
-3. **integration** — render Compose with GHCR image refs, `docker compose pull/up`, smoke, `validate-local.yml`.
-4. **deploy-production** (push to `main` only) — Ansible deploy to the VPS with `divband_use_ghcr=true` and the same SHA tag.
-
-HAProxy/Nginx base images in CI still use Docker Hub (no Arvan prefix on runners).
-
-### Deploy pipeline
-
-Deploy runs the same Ansible entrypoints as local production:
-
-```bash
-make ansible-remote INVENTORY=infra/ansible/inventory.yml
-make ansible-remote-validate INVENTORY=infra/ansible/inventory.yml
-```
-
-Equivalent playbooks: `remote-docker.yml`, then `validate-vps.yml`.
-
-## One-time GitHub setup (gh CLI on your PC)
-
-Prerequisites: [GitHub CLI](https://cli.github.com/) installed and logged in (`gh auth login`),
-admin access to the repository, and workflows pushed to GitHub.
-
-### Automated setup script
-
-```bash
-# Interactive — prompts for VPS host, key generation, optional ssh-copy-id
-make setup-github-actions
-
-# Or non-interactive with an env file:
-cp .github/setup.env.example .github/setup.env
-# edit .github/setup.env, then:
-scripts/setup-github-actions.sh -y --env-file .github/setup.env --generate-key --copy-ssh-id
-```
-
-The script uses `gh` to:
-
-1. Create the **`production`** deployment environment.
-2. Set environment secrets: `DIVBAND_SSH_PRIVATE_KEY`, `DIVBAND_VPS_HOST`, `DIVBAND_VPS_USER`.
-3. Set repository variable `DIVBAND_ARVAN_ENABLED` (`true` / `false`).
-4. Optionally generate `~/.ssh/divband_github_actions` and run `ssh-copy-id`.
-5. Optionally enable branch protection (`--require-ci`) or trigger deploy (`--run-deploy`).
-
-Useful flags: `--help`, `--dry-run`, `--host`, `--key-file`, `--arvan false`, `--require-ci`.
-
-### Manual setup (GitHub UI)
-
-1. Push this repository to GitHub (workflows must exist on the default branch).
-2. Create environment **`production`** (Settings → Environments).
-3. Add **environment secrets** on `production`:
-
-| Secret | Required | Description |
-| --- | --- | --- |
-| `DIVBAND_SSH_PRIVATE_KEY` | Yes | Full private key (PEM) for the deploy user |
-| `DIVBAND_VPS_HOST` | Yes | VPS IP or hostname |
-| `DIVBAND_VPS_USER` | No | SSH user; defaults to `ubuntu` |
-| `DIVBAND_GHCR_TOKEN` | No | PAT with `read:packages` so the VPS can pull **private** GHCR images |
-
-4. Optional **repository variable** `DIVBAND_ARVAN_ENABLED` — set to `false` to skip Arvan prefixes.
-
-5. **GHCR visibility** — after the first publish, open
-   `https://github.com/users/<you>/packages/container/divband-test2/settings` (per package)
-   and set visibility to **Public**, *or* keep packages private and set `DIVBAND_GHCR_TOKEN`.
-
-6. Recommended: **branch protection** on `main` — require CI jobs to pass before merge
-   (or re-run the script with `--require-ci` after the first green workflow).
+1. **unit-tests** — Python unit tests.
+2. **publish-images** — build buildable projects, push to `ghcr.io/<owner>/divband-<name>:<sha>`.
+3. **integration** — pull GHCR images on a GitHub runner, smoke routing.
+4. **trigger-vps-deploy** (push to `main` only) — `POST` the VPS deploy webhook.
 
 ## One-time VPS setup
 
-The deploy user must accept the GitHub Actions SSH key and allow Ansible `become`:
+On the **production server** (SSH as you normally do):
 
 ```bash
-# On the VPS, as root or with sudo — replace DEPLOY_USER if not ubuntu
-export DEPLOY_USER=ubuntu
-sudo install -d -m 0755 /etc/sudoers.d
-sudo sed "s/^ubuntu /${DEPLOY_USER} /" /opt/divband/infra/ansible/sudoers.d/99-divband-ansible \
-  | sudo tee /etc/sudoers.d/99-divband-ansible
-sudo chmod 440 /etc/sudoers.d/99-divband-ansible
-sudo visudo -cf /etc/sudoers.d/99-divband-ansible
+# Sync the repo (first time)
+sudo mkdir -p /opt/divband
+sudo chown ubuntu:ubuntu /opt/divband
+git clone https://github.com/millw0rm/divbandai.git /opt/divband
+cd /opt/divband
+
+# Install webhook + deploy script (prints secret and firewall hint)
+sudo bash scripts/install-vps-deploy.sh
 ```
 
-After the first deploy, files live under `/opt/divband`. For the **first** bootstrap,
-use [manual-ssh-deployment.md](manual-ssh-deployment.md) or run **Deploy** manually
-with `arvan_enabled=true` if the VM cannot reach public Docker Hub or Ubuntu mirrors.
+Edit `/etc/divband/deploy.env` if needed:
 
-Authorize the CI deploy public key:
+| Variable | Purpose |
+| --- | --- |
+| `DIVBAND_APP_DIR` | Git checkout path (`/opt/divband`) |
+| `DIVBAND_GHCR_OWNER` | GitHub user/org for images |
+| `DIVBAND_GHCR_TOKEN` | PAT with `read:packages` if GHCR images are private |
+| `DIVBAND_ARVAN_ENABLED` | `true` to prefix Arvan registry on base images |
+| `DIVBAND_DEPLOY_WEBHOOK_SECRET` | Bearer token (generated by install script) |
+
+Open **TCP 9090** in your cloud firewall (or reverse-proxy `POST /deploy` to that port).
+
+### Manual deploy on the VPS
 
 ```bash
-# On your laptop — add the public half to the VPS
-ssh-copy-id -i ~/.ssh/divband_github_actions.pub "${DEPLOY_USER}@${DIVBAND_VPS_HOST}"
+sudo -u ubuntu bash /opt/divband/scripts/vps-deploy.sh <git-sha>
 ```
 
-Store only the **private** key in `DIVBAND_SSH_PRIVATE_KEY`.
+## One-time GitHub setup
 
-## Manual deploy
+Repository **environment** `production` secrets:
 
-**Actions → Deploy → Run workflow**
+| Secret | Required | Example |
+| --- | --- | --- |
+| `DIVBAND_DEPLOY_WEBHOOK_URL` | Yes | `http://94.101.178.146:9090/deploy` |
+| `DIVBAND_DEPLOY_WEBHOOK_SECRET` | Yes | Same as in `/etc/divband/deploy.env` |
+| `DIVBAND_GHCR_TOKEN` | No | Only if GHCR packages are private (VPS `docker login`) |
 
-- **arvan_enabled** — match your VPS network (usually `true` for Arvan-restricted hosts).
-- **validate_after_deploy** — run `validate-vps.yml` after deploy (recommended).
-
-## Automatic deploy
-
-Every successful push to **`main`** runs CI, then **deploy-production** if integration passed.
-Disable auto-deploy by removing the `deploy-production` job from `ci.yml` or restricting
-the `production` environment with approval gates.
-
-## Local parity
-
-Install the same tools CI uses:
+Automated with the GitHub CLI on your laptop:
 
 ```bash
-python3 -m venv .venv-ci
-.venv-ci/bin/pip install -r requirements-ci.txt
-make test-api
+make setup-github-actions
+# or: scripts/setup-github-actions.sh --webhook-url http://YOUR_VPS:9090/deploy --webhook-secret <secret>
 ```
 
-Run deploy logic locally (secrets in the environment):
+Optional repository variable `DIVBAND_ARVAN_ENABLED` — set to `false` to skip Arvan prefixes on base images.
+
+### GHCR package visibility
+
+After the first CI run, make packages **Public** under GitHub → Packages, or set
+`DIVBAND_GHCR_TOKEN` on the VPS and in GitHub secrets.
+
+## Test the webhook
 
 ```bash
-export DIVBAND_SSH_PRIVATE_KEY="$(cat ~/.ssh/id_ed25519)"
-export DIVBAND_VPS_HOST=94.101.178.146
-export DIVBAND_ARVAN_ENABLED=true
-bash scripts/github-actions-deploy.sh
+export DIVBAND_DEPLOY_WEBHOOK_URL=http://YOUR_VPS:9090/deploy
+export DIVBAND_DEPLOY_WEBHOOK_SECRET=<from /etc/divband/deploy.env>
+bash scripts/trigger-vps-deploy.sh "$(git rev-parse HEAD)"
 ```
 
 ## GHCR image names
 
 | Project kind | Image |
 | --- | --- |
-| `nextjs`, `node`, `python`, `docker` | `ghcr.io/<owner>/divband-<name>:<tag>` |
-| `static` | `nginx:1.27-alpine` (+ volume mounts), not stored in GHCR |
+| `nextjs`, `node`, `python`, `docker` | `ghcr.io/<owner>/divband-<name>:<sha>` |
+| `static` | `nginx` + git-managed HTML (not in GHCR) |
 
-Publish locally (after `docker login ghcr.io`):
+## Legacy: SSH / Ansible push deploy
+
+`scripts/github-actions-deploy.sh` and `.github/actions/deploy-vps` remain for
+emergency bootstrap but are **not** used by default CI. Prefer pull deploy.
+
+## Local CI parity
 
 ```bash
-export GHCR_OWNER=millw0rm GHCR_TAG=$(git rev-parse HEAD)
-python3 scripts/ghcr_publish.py
+make test-ci
+python3 scripts/ghcr_publish.py --no-push   # requires GHCR_TAG and docker
 ```
-
-## What CI/CD does not cover
-
-- TLS certificates and DNS (still operator / DNS provider).
-- Multi-environment staging hosts (only `production` is wired today).
-
-See also [getting-started.md](getting-started.md) and [infra/ansible/README.md](../infra/ansible/README.md).

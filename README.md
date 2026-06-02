@@ -10,8 +10,9 @@ The current deployable system is:
 - Host routing for `divbandai.ir`, `www.divbandai.ir`, and `test.divbandai.ir`.
 - Container images pulled through `docker.arvancloud.ir`.
 
-There is no Kubernetes or Terraform in this branch. **GitHub Actions** runs CI
-and production deploys; see [docs/ci-cd.md](docs/ci-cd.md). Provisioning is
+There is no Kubernetes or Terraform in this branch. **GitHub Actions** builds and
+pushes to GHCR; the **VPS pulls** images and deploys via webhook. See
+[docs/ci-cd.md](docs/ci-cd.md). Provisioning is
 handled by a **local Project API** and
 `scripts/create-project.py`, which generate Docker Compose services, HAProxy
 routes, and project scaffolds (Nginx static or Next.js). Ansible covers VPS
@@ -146,11 +147,11 @@ make setup-github-actions   # uses gh CLI; see .github/setup.env.example
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | Push and PRs to `main` | Tests, Docker smoke, Ansible validate-local; **auto-deploy** on push to `main` |
-| `deploy.yml` | Manual | Same VPS deploy without waiting for CI |
+| `ci.yml` | Push and PRs to `main` | Tests, GHCR publish, smoke; **webhook deploy** on push to `main` |
+| `deploy.yml` | Manual | Trigger VPS pull deploy for a commit |
 
-Configure the GitHub **`production`** environment with secrets
-`DIVBAND_SSH_PRIVATE_KEY`, `DIVBAND_VPS_HOST`, and optional `DIVBAND_VPS_USER`.
+On the VPS once: `sudo bash scripts/install-vps-deploy.sh`.  
+On GitHub **`production`** secrets: `DIVBAND_DEPLOY_WEBHOOK_URL`, `DIVBAND_DEPLOY_WEBHOOK_SECRET`.
 
 ## VM Deployment
 

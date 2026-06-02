@@ -7,7 +7,7 @@ KIND ?= static
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8080
 
-.PHONY: help up down restart ps logs smoke project project-delete api test-api test-all test-ci setup-ansible-sudo setup-github-actions ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
+.PHONY: help up down restart ps logs smoke project project-delete api test-api test-all test-ci setup-ansible-sudo setup-github-actions install-vps-deploy vps-deploy ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
 
 help:
 	@printf 'Available commands:\n'
@@ -23,7 +23,9 @@ help:
 	@printf '  make setup-ansible-sudo\n'
 	@printf '      Install passwordless sudo for local Ansible playbooks (run once)\n'
 	@printf '  make setup-github-actions\n'
-	@printf '      Configure production env + secrets on GitHub via gh CLI\n'
+	@printf '      Configure webhook deploy secrets on GitHub via gh CLI\n'
+	@printf '  make install-vps-deploy\n'
+	@printf '      Install pull-deploy webhook on the VPS (run on server with sudo)\n'
 	@printf '  make project NAME=test\n'
 	@printf '      Create or refresh a project and route NAME.divbandai.ir; set KIND=nextjs for Next.js\n'
 	@printf '  make project-delete NAME=test\n'
@@ -86,6 +88,13 @@ setup-ansible-sudo:
 
 setup-github-actions:
 	scripts/setup-github-actions.sh
+
+install-vps-deploy:
+	scripts/install-vps-deploy.sh
+
+vps-deploy:
+	@test -n "$(SHA)" || (printf 'SHA is required, e.g. make vps-deploy SHA=$(git rev-parse HEAD)\n' >&2; exit 2)
+	bash scripts/vps-deploy.sh "$(SHA)"
 
 api:
 	DIVBAND_API_HOST="$(API_HOST)" DIVBAND_API_PORT="$(API_PORT)" scripts/project-api.py

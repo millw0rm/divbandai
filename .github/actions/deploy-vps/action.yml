@@ -1,7 +1,11 @@
 name: Deploy Divband VPS
-description: Configure SSH and run Ansible remote-docker (and optional validate-vps) playbooks.
+description: Run Ansible remote-docker (and optional validate-vps) via SSH or on-host (local).
 
 inputs:
+  deploy_mode:
+    description: "ssh: connect to DIVBAND_VPS_HOST; local: Ansible on this runner (self-hosted on VPS)"
+    required: false
+    default: ssh
   arvan_enabled:
     description: Enable Arvan mirror and registry on the VPS
     required: false
@@ -27,11 +31,13 @@ inputs:
     required: false
     default: ""
   ssh_private_key:
-    description: SSH private key for the deploy user
-    required: true
+    description: SSH private key (required when deploy_mode=ssh)
+    required: false
+    default: ""
   vps_host:
-    description: VPS public IP or hostname
-    required: true
+    description: VPS public IP or hostname (required when deploy_mode=ssh)
+    required: false
+    default: ""
   vps_user:
     description: SSH user on the VPS
     required: false
@@ -43,6 +49,7 @@ runs:
     - name: Deploy with Ansible
       shell: bash
       env:
+        DIVBAND_DEPLOY_MODE: ${{ inputs.deploy_mode }}
         DIVBAND_SSH_PRIVATE_KEY: ${{ inputs.ssh_private_key }}
         DIVBAND_VPS_HOST: ${{ inputs.vps_host }}
         DIVBAND_VPS_USER: ${{ inputs.vps_user }}

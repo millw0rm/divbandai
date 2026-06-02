@@ -52,7 +52,7 @@ Not included:
 - TLS certificates.
 - Kubernetes.
 - Terraform.
-- GitLab CI (GitHub Actions covers CI and VPS deploy; see [ci-cd.md](ci-cd.md)).
+- GitLab CI (GitHub Actions + GHCR pull deploy on VPS; see [ci-cd.md](ci-cd.md)).
 - Multi-tenant project provisioning.
 - Application control plane.
 - Persistent databases or object storage.

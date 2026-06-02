@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Configure GitHub Actions CI/CD for Divband using the gh CLI.
+# Configure GitHub Actions CI/CD for Divband using the gh CLI (pull-deploy webhook).
 #
 # Usage:
-#   scripts/setup-github-actions.sh              # interactive
+#   scripts/setup-github-actions.sh
+#   scripts/setup-github-actions.sh --webhook-url http://VPS:9090/deploy --webhook-secret <secret>
 #   scripts/setup-github-actions.sh -y --env-file .github/setup.env
-#   scripts/setup-github-actions.sh --generate-key --copy-ssh-id
 #
 # Requires: gh (authenticated), git remote pointing at GitHub, repo admin rights.
 set -euo pipefail
@@ -24,10 +24,13 @@ REQUIRE_CI=false
 DRY_RUN=false
 ENV_FILE=""
 GHCR_TOKEN=""
+WEBHOOK_URL=""
+WEBHOOK_SECRET=""
 ARVAN_ENABLED="true"
 VPS_HOST=""
 VPS_USER="ubuntu"
 KEY_FILE=""
+LEGACY_SSH=false
 
 usage() {
   cat <<'EOF'
@@ -52,7 +55,10 @@ EOF
   printf '  --copy-ssh-id          Run ssh-copy-id with the deploy public key\n'
   printf '  --require-ci           Enable branch protection requiring CI jobs (after first green run)\n'
   printf '  --run-deploy           Trigger the manual Deploy workflow when finished\n'
-  printf '  --ghcr-token TOKEN     Also store DIVBAND_GHCR_TOKEN for VPS GHCR pulls\n'
+  printf '  --webhook-url URL      DIVBAND_DEPLOY_WEBHOOK_URL (e.g. http://VPS:9090/deploy)\n'
+  printf '  --webhook-secret SEC   DIVBAND_DEPLOY_WEBHOOK_SECRET\n'
+  printf '  --ghcr-token TOKEN     Optional DIVBAND_GHCR_TOKEN for private GHCR on VPS\n'
+  printf '  --legacy-ssh           Also configure SSH/Ansible push secrets (deprecated)\n'
   printf '  --dry-run              Print actions without calling GitHub\n'
   printf '  -h, --help             Show this help\n'
 }
@@ -335,7 +341,7 @@ Verify GitHub configuration:
 
 Trigger deploy manually:
 
-  gh workflow run deploy.yml -R ${REPO} -f arvan_enabled=${ARVAN_ENABLED} -f validate_after_deploy=true
+  gh workflow run deploy.yml -R ${REPO}
 
 Watch CI after pushing workflows:
 
@@ -359,6 +365,9 @@ main() {
       --require-ci) REQUIRE_CI=true; shift ;;
       --run-deploy) RUN_DEPLOY=true; shift ;;
       --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
+      --webhook-url) WEBHOOK_URL="$2"; shift 2 ;;
+      --webhook-secret) WEBHOOK_SECRET="$2"; shift 2 ;;
+      --legacy-ssh) LEGACY_SSH=true; shift ;;
       --dry-run) DRY_RUN=true; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "unknown option: $1 (use --help)" ;;
@@ -378,6 +387,8 @@ main() {
     COPY_SSH_ID=true
   fi
   GHCR_TOKEN="${GHCR_TOKEN:-${DIVBAND_GHCR_TOKEN:-}}"
+  WEBHOOK_URL="${WEBHOOK_URL:-${DIVBAND_DEPLOY_WEBHOOK_URL:-}}"
+  WEBHOOK_SECRET="${WEBHOOK_SECRET:-${DIVBAND_DEPLOY_WEBHOOK_SECRET:-}}"
 
   require_gh
   detect_repo
@@ -389,19 +400,33 @@ main() {
     confirm "Configure GitHub Actions secrets and variables for ${REPO}?" || die "aborted"
   fi
 
-  resolve_vps_host
-  resolve_key_file
+  if [[ -z "${WEBHOOK_URL}" ]]; then
+    WEBHOOK_URL="$(prompt_default "Deploy webhook URL (DIVBAND_DEPLOY_WEBHOOK_URL)" "http://${VPS_HOST:-94.101.178.146}:9090/deploy")"
+  fi
+  if [[ -z "${WEBHOOK_SECRET}" ]]; then
+    WEBHOOK_SECRET="$(prompt_default "Deploy webhook secret" "")"
+  fi
+  [[ -n "${WEBHOOK_URL}" && -n "${WEBHOOK_SECRET}" ]] || die "webhook URL and secret are required"
 
   if [[ "${ASSUME_YES}" != "true" ]]; then
-    VPS_USER="$(prompt_default "SSH user (DIVBAND_VPS_USER)" "${VPS_USER}")"
-    ARVAN_ENABLED="$(prompt_default "Arvan mirror on deploy (true/false)" "${ARVAN_ENABLED}")"
+    ARVAN_ENABLED="$(prompt_default "Arvan mirror on VPS (true/false)" "${ARVAN_ENABLED}")"
   fi
 
   create_environment
-  set_secret_from_file DIVBAND_SSH_PRIVATE_KEY "${PRIVATE_KEY}"
-  set_secret_from_value DIVBAND_VPS_HOST "${VPS_HOST}"
-  set_secret_from_value DIVBAND_VPS_USER "${VPS_USER}"
+  set_secret_from_value DIVBAND_DEPLOY_WEBHOOK_URL "${WEBHOOK_URL}"
+  set_secret_from_value DIVBAND_DEPLOY_WEBHOOK_SECRET "${WEBHOOK_SECRET}"
   set_repo_variable DIVBAND_ARVAN_ENABLED "${ARVAN_ENABLED}"
+
+  if [[ "${LEGACY_SSH}" == "true" ]]; then
+    resolve_vps_host
+    resolve_key_file
+    set_secret_from_file DIVBAND_SSH_PRIVATE_KEY "${PRIVATE_KEY}"
+    set_secret_from_value DIVBAND_VPS_HOST "${VPS_HOST}"
+    set_secret_from_value DIVBAND_VPS_USER "${VPS_USER}"
+    if [[ "${COPY_SSH_ID}" == "true" ]]; then
+      copy_ssh_id
+    fi
+  fi
 
   if [[ -n "${GHCR_TOKEN}" ]]; then
     set_secret_from_value DIVBAND_GHCR_TOKEN "${GHCR_TOKEN}"
@@ -409,12 +434,6 @@ main() {
     read -r -s -p "PAT (read:packages): " GHCR_TOKEN
     printf '\n'
     [[ -n "${GHCR_TOKEN}" ]] && set_secret_from_value DIVBAND_GHCR_TOKEN "${GHCR_TOKEN}"
-  fi
-
-  if [[ "${COPY_SSH_ID}" == "true" ]]; then
-    copy_ssh_id
-  elif [[ "${ASSUME_YES}" != "true" ]] && confirm "Run ssh-copy-id to install the deploy public key on the VPS?"; then
-    copy_ssh_id
   fi
 
   if [[ "${REQUIRE_CI}" == "true" ]]; then
@@ -426,9 +445,7 @@ main() {
     arvan_input="${ARVAN_ENABLED}"
     [[ "${arvan_input}" == "true" || "${arvan_input}" == "1" ]] && arvan_input=true || arvan_input=false
     gh_repo_args
-    run gh workflow run deploy.yml "${GH_REPO_ARGS[@]}" \
-      -f "arvan_enabled=${arvan_input}" \
-      -f "validate_after_deploy=true"
+    run gh workflow run deploy.yml "${GH_REPO_ARGS[@]}"
   fi
 
   log "GitHub Actions setup complete"
