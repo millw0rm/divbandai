@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: Divband Project API
+  version: 1.2.0
+  description: Local control plane for projects, routing, Docker Compose, backups, drift, and remote Ansible deploys.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /healthz:
+    get:
+      summary: API liveness probe
+      responses:
+        "200":
+          description: OK
+  /v1/metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: Prometheus text exposition
+  /v1/projects:
+    get:
+      summary: List projects
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Create or refresh a project
+      security: [{bearerAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMutation"
+      responses:
+        "200":
+          description: Refreshed
+        "201":
+          description: Created
+        "202":
+          description: Async job accepted
+  /v1/projects/{name}:
+    get:
+      summary: Get one project
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+    put:
+      summary: Replace project
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMutation"
+      responses:
+        "200":
+          description: OK
+    patch:
+      summary: Patch project
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectMutation"
+      responses:
+        "200":
+          description: OK
+    delete:
+      summary: Delete project
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: Deleted
+        "207":
+          description: Partial docker cleanup failure
+  /v1/projects/{name}/status:
+    get:
+      summary: Project container status
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+  /v1/projects/{name}/files:
+    put:
+      summary: Upload static project files
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+  /v1/projects/{name}/backup:
+    post:
+      summary: Backup project tree
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+  /v1/projects/{name}/restore:
+    post:
+      summary: Restore project from backup
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+  /v1/projects/{name}/backups:
+    get:
+      summary: List backups
+      security: [{bearerAuth: []}]
+      parameters: [$ref: "#/components/parameters/name"]
+      responses:
+        "200":
+          description: OK
+  /v1/status:
+    get:
+      summary: Stack status
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+  /v1/drift:
+    get:
+      summary: Config vs runtime drift
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+  /v1/system/docker:
+    get:
+      summary: Docker images and disk usage
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+  /v1/system/git:
+    get:
+      summary: Git dirty state
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+  /v1/environments:
+    get:
+      summary: Ansible environments
+      security: [{bearerAuth: []}]
+      responses:
+        "200":
+          description: OK
+  /v1/jobs/{id}:
+    get:
+      summary: Async job status
+      security: [{bearerAuth: []}]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+  /v1/deploy:
+    post:
+      summary: Local deploy actions
+      security: [{bearerAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeployRequest"
+      responses:
+        "200":
+          description: OK
+        "202":
+          description: Async job accepted
+  /v1/remote/deploy:
+    post:
+      summary: Remote Ansible deploy
+      security: [{bearerAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                environment:
+                  type: string
+                async:
+                  type: boolean
+                callback_url:
+                  type: string
+      responses:
+        "200":
+          description: OK
+        "202":
+          description: Async job accepted
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    name:
+      in: path
+      name: name
+      required: true
+      schema:
+        type: string
+  schemas:
+    ProjectMutation:
+      type: object
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [static, nextjs, node, python, docker]
+        domains:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        env_file:
+          type: string
+        secrets:
+          type: array
+          items:
+            type: string
+        health_check:
+          type: string
+        tls:
+          type: boolean
+        port:
+          type: integer
+        dockerfile:
+          type: string
+        deploy:
+          type: boolean
+        dns:
+          type: boolean
+        async:
+          type: boolean
+        callback_url:
+          type: string
+        backup_before:
+          type: boolean
+        prune_volumes:
+          type: boolean
+    DeployRequest:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [up, down, restart, pull, reload-haproxy]
+        project:
+          type: string
+        build:
+          type: boolean
+        async:
+          type: boolean
+        callback_url:
+          type: string

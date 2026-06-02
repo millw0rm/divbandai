@@ -114,6 +114,34 @@ Ansible operations: [../infra/ansible/README.md](../infra/ansible/README.md).
 - **Backend port**: **3000**.
 - **Use when**: React/Next apps that need server-side rendering or a Node runtime.
 
+### `node`
+
+- **Container**: Express app on port **3000**, built from `projects/<name>/Dockerfile`.
+- **Use when**: lightweight Node HTTP services.
+
+### `python`
+
+- **Container**: Flask + Gunicorn on port **8000**.
+- **Use when**: Python APIs or small WSGI apps.
+
+### `docker`
+
+- **Container**: built from a caller-provided `Dockerfile` under `projects/<name>/`.
+- **Use when**: custom runtimes; set `"port"` and optional `"dockerfile"` in the API body.
+
+### Shared project options (API)
+
+| Field | Meaning |
+| --- | --- |
+| `env` | Inline environment variables in Compose |
+| `env_file` | Path to a gitignored env file |
+| `secrets` | List of env file paths (not stored in git) |
+| `health_check` | HAProxy health path (default `/healthz`) |
+| `tls` | Enable HAProxy `:443` for project domains |
+| `dns` | When `true`, call optional DNS provider on create/delete |
+| `async` | Return `202` + job id for long builds |
+| `callback_url` | Webhook when async job completes |
+
 Pinned dependency versions in the generator: Next `16.2.7`, React `19.2.7` (see `create-project.py` constants).
 
 ---
@@ -189,16 +217,35 @@ make api
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/` | No | Service metadata and endpoint list. |
+| `GET` | `/` | No | Service metadata and route list. |
 | `GET` | `/healthz` | No | `{"status":"ok"}`. |
-| `GET` | `/projects` | Bearer if token set | List projects from `projects.yml`. |
-| `POST` | `/projects` | Bearer if token set | Create/refresh project; optional deploy. |
-| `POST` | `/deploy` | Bearer if token set | Run `docker compose up -d` (optional `--build`, optional single service). |
+| `GET` | `/v1/metrics` | No | Prometheus metrics. |
+| `GET` | `/v1/projects` | Bearer if token set | List projects from `projects.yml`. |
+| `GET` | `/v1/projects/{name}` | Bearer if token set | One project plus runtime hints. |
+| `GET` | `/v1/projects/{name}/status` | Bearer if token set | Container state for a project. |
+| `GET` | `/v1/projects/{name}/backups` | Bearer if token set | List backups for a project. |
+| `GET` | `/v1/status` | Bearer if token set | Docker Compose service list + last deploy. |
+| `GET` | `/v1/drift` | Bearer if token set | Registry vs Docker vs config drift. |
+| `GET` | `/v1/system/docker` | Bearer if token set | Images and disk usage. |
+| `GET` | `/v1/system/git` | Bearer if token set | Git dirty paths (repo mutation hint). |
+| `GET` | `/v1/environments` | Bearer if token set | Ansible environment map. |
+| `GET` | `/v1/jobs/{id}` | Bearer if token set | Async job status. |
+| `POST` | `/v1/projects` | Bearer if token set | Create/refresh project; optional deploy/DNS/async. |
+| `POST` | `/v1/projects/{name}/backup` | Bearer if token set | Tarball backup of project tree. |
+| `POST` | `/v1/projects/{name}/restore` | Bearer if token set | Restore from backup. |
+| `PUT` | `/v1/projects/{name}` | Bearer if token set | Replace project definition. |
+| `PUT` | `/v1/projects/{name}/files` | Bearer if token set | Upload static assets. |
+| `PATCH` | `/v1/projects/{name}` | Bearer if token set | Update kind, domains, env, TLS, etc. |
+| `DELETE` | `/v1/projects/{name}` | Bearer if token set | Delete project; optional backup/DNS/prune. |
+| `POST` | `/v1/deploy` | Bearer if token set | Deploy actions (supports `async`). |
+| `POST` | `/v1/remote/deploy` | Bearer if token set | Trigger Ansible for an environment. |
+
+Legacy unprefixed paths (`/projects`, `/deploy`, `/status`) still work. OpenAPI: [openapi.yaml](openapi.yaml). API TLS: [api-tls.md](api-tls.md).
 
 **Create project (static, no deploy):**
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/projects \
+curl -s -X POST http://127.0.0.1:8080/v1/projects \
   -H 'Content-Type: application/json' \
   -d '{"name":"demo","kind":"static"}'
 ```
@@ -206,24 +253,44 @@ curl -s -X POST http://127.0.0.1:8080/projects \
 **Create and deploy in one call:**
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/projects \
+curl -s -X POST http://127.0.0.1:8080/v1/projects \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${DIVBAND_API_TOKEN}" \
   -d '{"name":"demo2","kind":"nextjs","deploy":true}'
 ```
 
+**Add a domain without rescaffolding app content:**
+
+```bash
+curl -s -X PATCH http://127.0.0.1:8080/v1/projects/demo \
+  -H 'Content-Type: application/json' \
+  -d '{"domains":["extra.example.com"],"deploy":true,"deploy_action":"reload-haproxy"}'
+```
+
+**Delete a project:**
+
+```bash
+curl -s -X DELETE http://127.0.0.1:8080/v1/projects/demo \
+  -H "Authorization: Bearer ${DIVBAND_API_TOKEN}"
+```
+
 **Deploy only:**
 
 ```bash
-curl -s -X POST http://127.0.0.1:8080/deploy \
+curl -s -X POST http://127.0.0.1:8080/v1/deploy \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${DIVBAND_API_TOKEN}" \
-  -d '{"build":true}'
+  -d '{"action":"up","build":true}'
 
 # Rebuild/deploy one service
-curl -s -X POST http://127.0.0.1:8080/deploy \
+curl -s -X POST http://127.0.0.1:8080/v1/deploy \
   -H 'Content-Type: application/json' \
-  -d '{"project":"demo2","build":true}'
+  -d '{"action":"restart","project":"demo2","build":true}'
+
+# Reload HAProxy after routing-only config change
+curl -s -X POST http://127.0.0.1:8080/v1/deploy \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"reload-haproxy"}'
 ```
 
 **POST /projects body fields:**
@@ -236,7 +303,7 @@ curl -s -X POST http://127.0.0.1:8080/deploy \
 | `deploy` | bool | `false` | Run `docker compose up -d --build` after generate. |
 | `non_arvan_images` | bool | `false` | Write Compose without `docker.arvancloud.ir/` prefix. |
 
-The API uses a **process-wide write lock** so concurrent `POST` requests do not corrupt generated files. It runs `create-project.py` as a subprocess and returns stdout/stderr in JSON.
+The API uses a **process-wide write lock** so concurrent mutating requests do not corrupt generated files. It imports `scripts/divband_projects.py` directly (no subprocess). Errors use `{"error","code","details","request_id"}`.
 
 **Security note:** The API is intended for **localhost or trusted networks**. It can execute Docker and rewrite repository files. Always set `DIVBAND_API_TOKEN` if the listener is not bound to loopback.
 
@@ -425,14 +492,13 @@ The README and [architecture.md](architecture.md) list these as out of scope for
 5. `make smoke` or curl with `Host` header.
 6. Verify from outside: `curl http://<label>.divbandai.ir/`.
 
-**Remove a project** (manual today; API planned)
+**Remove a project**
 
-1. Remove entry from `infra/ansible/vars/projects.yml`.
-2. Delete `projects/<name>/`.
-3. Re-run `create-project.py` for a remaining project **or** hand-edit `haproxy.cfg` and `docker-compose.yml`.
-4. `docker compose up -d` to reconcile containers.
+1. `make project-delete NAME=<label>` or `DELETE /v1/projects/<label>`.
+2. Commit generated file changes if you use git-as-source-of-truth.
+3. Remove DNS records manually (or automate later).
 
-See [api-todo.md](api-todo.md) for the full API backlog (delete, cleanup, PATCH, deploy actions, etc.).
+See [api-todo.md](api-todo.md) for remaining backlog (async deploy, TLS, remote targets, etc.).
 
 ---
 
@@ -441,6 +507,8 @@ See [api-todo.md](api-todo.md) for the full API backlog (delete, cleanup, PATCH,
 | Goal | Command |
 | --- | --- |
 | Create static project | `make project NAME=app` |
+| Delete project | `make project-delete NAME=app` |
+| Run API tests | `make test-api` |
 | Create Next.js project | `make project NAME=app KIND=nextjs` |
 | Run API | `make api` |
 | Start stack | `make up` |

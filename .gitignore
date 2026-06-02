@@ -5,4 +5,10 @@ dist/
 .secrets/
 .tools/
 .venv-ansible/
+.divband/
+backups/
+projects/*/.env
+projects/*/secrets/
 infra/ansible/inventory.yml
+config/certs/*.pem
+config/certs/*.key

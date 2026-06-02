@@ -22,9 +22,20 @@ frontend public_http
 {% endfor %}
     default_backend unknown_host
 
+{% if divband_projects | selectattr('tls', 'defined') | selectattr('tls') | list | length > 0 %}
+frontend public_https
+    bind *:443 ssl crt /etc/haproxy/certs/
+
+{% for project in divband_projects if project.tls | default(false) %}
+    acl host_{{ project.name }} hdr(host) -i{% for domain in project.domains %} {{ domain }}{% endfor %}
+    use_backend {{ project.name }}_project if host_{{ project.name }}
+{% endfor %}
+    default_backend unknown_host
+
+{% endif %}
 {% for project in divband_projects %}
 backend {{ project.name }}_project
-    option httpchk GET /healthz
+    option httpchk GET {{ project.health_check | default('/healthz') }}
     http-check expect status 200
     server {{ project.name }}_web {{ project.name }}-web:{{ project.port | default(80) }} check
 

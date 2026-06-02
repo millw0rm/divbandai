@@ -5,26 +5,53 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+{% if divband_projects | selectattr('tls', 'defined') | selectattr('tls') | list | length > 0 %}
+      - "443:443"
+{% endif %}
     volumes:
       - ./config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+{% if divband_projects | selectattr('tls', 'defined') | selectattr('tls') | list | length > 0 %}
+      - ./config/certs:/etc/haproxy/certs:ro
+{% endif %}
+{% if divband_projects %}
     depends_on:
 {% for project in divband_projects %}
       - {{ project.name }}-web
 {% endfor %}
+{% endif %}
     networks:
       - divband
 
 {% for project in divband_projects %}
   {{ project.name }}-web:
-{% if project.kind | default('static') == 'nextjs' %}
+{% if project.kind | default('static') in ['nextjs', 'node', 'python', 'docker'] %}
     image: divband-{{ project.name }}:local
     build:
       context: ./projects/{{ project.name }}
-      dockerfile: Dockerfile
+      dockerfile: {{ project.dockerfile | default('Dockerfile') }}
     container_name: divband-{{ project.name }}-web
     restart: unless-stopped
+{% if project.env is defined or project.kind | default('static') == 'nextjs' %}
     environment:
+{% if project.kind | default('static') == 'nextjs' and project.env is not defined %}
       NODE_ENV: production
+{% elif project.env is defined %}
+{% for key, value in project.env.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if project.env_file is defined or project.secrets is defined %}
+    env_file:
+{% if project.env_file is defined %}
+      - {{ project.env_file }}
+{% endif %}
+{% if project.secrets is defined %}
+{% for secret in project.secrets %}
+      - {{ secret }}
+{% endfor %}
+{% endif %}
+{% endif %}
     networks:
       - divband
 {% else %}

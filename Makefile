@@ -7,7 +7,7 @@ KIND ?= static
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8080
 
-.PHONY: help up down restart ps logs smoke project api ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
+.PHONY: help up down restart ps logs smoke project project-delete api test-api ansible-local ansible-local-validate ansible-remote ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
 
 help:
 	@printf 'Available commands:\n'
@@ -19,6 +19,8 @@ help:
 	@printf '  make smoke    Verify Divband public host routing locally\n'
 	@printf '  make project NAME=test\n'
 	@printf '      Create or refresh a project and route NAME.divbandai.ir; set KIND=nextjs for Next.js\n'
+	@printf '  make project-delete NAME=test\n'
+	@printf '      Delete a project, regenerate routing, and clean up containers\n'
 	@printf '  make api\n'
 	@printf '      Run the local project creation API on API_HOST:API_PORT\n'
 	@printf '  make ansible-local\n'
@@ -57,6 +59,13 @@ smoke:
 project:
 	@test -n "$(NAME)" || (printf 'NAME is required, e.g. make project NAME=test\n' >&2; exit 2)
 	scripts/create-project.py "$(NAME)" --kind "$(KIND)"
+
+project-delete:
+	@test -n "$(NAME)" || (printf 'NAME is required, e.g. make project-delete NAME=demo\n' >&2; exit 2)
+	scripts/delete-project.py "$(NAME)"
+
+test-api:
+	python3 -m unittest discover -s tests -p 'test_*.py' -v
 
 api:
 	DIVBAND_API_HOST="$(API_HOST)" DIVBAND_API_PORT="$(API_PORT)" scripts/project-api.py
