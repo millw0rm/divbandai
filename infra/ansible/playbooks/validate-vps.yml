@@ -12,58 +12,22 @@
     - ../vars/projects.yml
 
   tasks:
-    - name: Require expected remote Arvan mode
-      ansible.builtin.assert:
-        that:
-          - divband_arvan_enabled is defined
-        fail_msg: "Set divband_arvan_enabled=true or divband_arvan_enabled=false for remote validation."
-
-    - name: Read hosts file
-      ansible.builtin.slurp:
-        src: /etc/hosts
-      register: divband_hosts_file
-
-    - name: Read Ubuntu sources file
-      ansible.builtin.slurp:
-        src: "{{ divband_ubuntu_sources_path }}"
-      register: divband_sources_file
-
     - name: Read Compose file
       ansible.builtin.slurp:
         src: "{{ divband_app_dir }}/docker-compose.yml"
       register: divband_compose_file
 
-    - name: Decode remote files
+    - name: Decode Compose file
       ansible.builtin.set_fact:
-        divband_hosts_content: "{{ divband_hosts_file.content | b64decode }}"
-        divband_sources_content: "{{ divband_sources_file.content | b64decode }}"
         divband_compose_content: "{{ divband_compose_file.content | b64decode }}"
 
-    - name: Validate Arvan mode files
+    - name: Validate Compose uses standard image names
       ansible.builtin.assert:
         that:
-          - "'BEGIN DIVBAND ARVAN HOST PINS' in divband_hosts_content"
-          - "'mirror.arvancloud.ir' in divband_hosts_content"
-          - "'docker.arvancloud.ir' in divband_hosts_content"
-          - "'URIs: https://mirror.arvancloud.ir/ubuntu/' in divband_sources_content"
-          - "'docker.arvancloud.ir/haproxy:2.9-alpine' in divband_compose_content"
-          - "'docker.arvancloud.ir/nginx:1.27-alpine' in divband_compose_content"
-        fail_msg: "Arvan mode is not fully applied."
-        success_msg: "Arvan mode files are applied."
-      when: divband_arvan_enabled | bool
-
-    - name: Validate non-Arvan mode files
-      ansible.builtin.assert:
-        that:
-          - "'BEGIN DIVBAND ARVAN HOST PINS' not in divband_hosts_content"
-          - "'URIs: https://mirror.arvancloud.ir/ubuntu/' not in divband_sources_content"
-          - "'docker.arvancloud.ir/haproxy:2.9-alpine' not in divband_compose_content"
-          - "'docker.arvancloud.ir/nginx:1.27-alpine' not in divband_compose_content"
           - "'image: haproxy:2.9-alpine' in divband_compose_content"
-          - "'image: nginx:1.27-alpine' in divband_compose_content"
-        fail_msg: "Non-Arvan mode is not fully applied."
-        success_msg: "Non-Arvan mode files are applied."
-      when: not (divband_arvan_enabled | bool)
+          - "'docker.arvancloud.ir/' not in divband_compose_content"
+        fail_msg: "Compose must use Docker Hub image names without docker.arvancloud.ir prefixes."
+        success_msg: "Compose image names look correct."
 
     - name: Check Docker service
       ansible.builtin.systemd:
@@ -115,4 +79,4 @@
 
     - name: Show validation result
       ansible.builtin.debug:
-        msg: "Validated divband_arvan_enabled={{ divband_arvan_enabled | bool }} on {{ inventory_hostname }}."
+        msg: "Validated Docker stack on {{ inventory_hostname }}."

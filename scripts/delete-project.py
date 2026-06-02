@@ -14,11 +14,6 @@ def main():
     parser = argparse.ArgumentParser(description="Delete a Divband project and clean up artifacts.")
     parser.add_argument("name", help="Project name to delete")
     parser.add_argument(
-        "--non-arvan-images",
-        action="store_true",
-        help="Regenerate docker-compose.yml with Docker Hub image names.",
-    )
-    parser.add_argument(
         "--no-docker",
         action="store_true",
         help="Skip container and image cleanup.",
@@ -48,7 +43,6 @@ def main():
     try:
         result = delete_project(
             args.name,
-            arvan=not args.non_arvan_images,
             backup_before=args.backup_before,
         )
         docker_steps = []

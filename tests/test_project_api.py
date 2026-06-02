@@ -58,35 +58,33 @@ class DivbandProjectsTestCase(unittest.TestCase):
         self.tempdir.cleanup()
 
     def test_create_and_delete_project(self):
-        result = self.module.create_or_refresh_project("demo", kind="static", arvan=False)
+        result = self.module.create_or_refresh_project("demo", kind="static")
         self.assertEqual(result["action"], "created")
         self.assertTrue(self.projects_dir.joinpath("demo/html/index.html").exists())
         self.assertIn("demo.divbandai.ir", result["project"]["domains"])
         self.assertIn("host_demo", self.haproxy_cfg.read_text())
 
-        delete_result = self.module.delete_project("demo", arvan=False)
+        delete_result = self.module.delete_project("demo")
         self.assertEqual(delete_result["action"], "deleted")
         self.assertFalse(self.projects_dir.joinpath("demo").exists())
         self.assertEqual(self.module.load_projects(), [])
 
     def test_domain_conflict(self):
-        self.module.create_or_refresh_project("one", kind="static", arvan=False)
+        self.module.create_or_refresh_project("one", kind="static")
         with self.assertRaises(self.module.ConflictError):
             self.module.create_or_refresh_project(
                 "two",
                 kind="static",
                 extra_domains=["one.divbandai.ir"],
-                arvan=False,
             )
 
     def test_patch_domains_only(self):
-        self.module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.module.create_or_refresh_project("demo", kind="static")
         html_path = self.projects_dir / "demo/html/index.html"
         original = html_path.read_text()
         result = self.module.patch_project(
             "demo",
             domains=["extra.example.com"],
-            arvan=False,
             refresh_content=False,
         )
         self.assertIn("extra.example.com", result["project"]["domains"])
@@ -95,16 +93,16 @@ class DivbandProjectsTestCase(unittest.TestCase):
         self.assertIn("extra.example.com", nginx_conf)
 
     def test_protected_delete(self):
-        self.module.create_or_refresh_project("test", kind="static", arvan=False)
+        self.module.create_or_refresh_project("test", kind="static")
         with self.assertRaises(self.module.ProtectedProjectError):
-            self.module.delete_project("test", arvan=False)
+            self.module.delete_project("test")
 
     def test_invalid_domain(self):
         with self.assertRaises(self.module.ValidationError):
             self.module.validate_domain("not a domain")
 
     def test_upload_static_files(self):
-        self.module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.module.create_or_refresh_project("demo", kind="static")
         result = self.module.upload_project_files(
             "demo",
             {"html/custom.html": "<h1>custom</h1>"},
@@ -114,12 +112,12 @@ class DivbandProjectsTestCase(unittest.TestCase):
         self.assertIn("custom", content)
 
     def test_empty_project_stack(self):
-        self.module.regenerate_stack([], arvan=False)
+        self.module.regenerate_stack([])
         compose = self.compose_file.read_text()
         self.assertNotIn("depends_on:", compose.split("networks:")[0])
 
     def test_node_kind_scaffold(self):
-        result = self.module.create_or_refresh_project("nodeapp", kind="node", arvan=False)
+        result = self.module.create_or_refresh_project("nodeapp", kind="node")
         self.assertTrue((self.projects_dir / "nodeapp/server.js").exists())
         self.assertEqual(result["project"]["port"], 3000)
 
@@ -127,32 +125,31 @@ class DivbandProjectsTestCase(unittest.TestCase):
         self.module.create_or_refresh_project(
             "demo",
             kind="static",
-            arvan=False,
             metadata={"health_check": "/ready"},
         )
         self.assertIn("GET /ready", self.haproxy_cfg.read_text())
 
     def test_detect_drift_structure(self):
-        self.module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.module.create_or_refresh_project("demo", kind="static")
         drift = self.module.detect_drift()
         self.assertIn("has_drift", drift)
         self.assertIn("expected_services", drift)
 
     def test_replace_project(self):
-        self.module.create_or_refresh_project("demo", kind="static", arvan=False)
-        result = self.module.replace_project("demo", kind="node", arvan=False)
+        self.module.create_or_refresh_project("demo", kind="static")
+        result = self.module.replace_project("demo", kind="node")
         self.assertEqual(result["action"], "replaced")
         self.assertEqual(result["project"]["kind"], "node")
         self.assertTrue((self.projects_dir / "demo/server.js").exists())
 
     def test_runtime_hints(self):
-        project = self.module.create_or_refresh_project("nodeapp", kind="node", arvan=False)["project"]
+        project = self.module.create_or_refresh_project("nodeapp", kind="node")["project"]
         hints = self.module.runtime_hints(project)
         self.assertEqual(hints["compose_service"], "nodeapp-web")
         self.assertEqual(hints["image"], "divband-nodeapp:local")
 
     def test_python_kind_scaffold(self):
-        result = self.module.create_or_refresh_project("pyapp", kind="python", arvan=False)
+        result = self.module.create_or_refresh_project("pyapp", kind="python")
         self.assertTrue((self.projects_dir / "pyapp/app.py").exists())
         self.assertEqual(result["project"]["port"], 8000)
 
@@ -258,7 +255,7 @@ class ProjectApiTestCase(IsolatedProjectsMixin, unittest.TestCase):
         self.assertEqual(body["code"], "forbidden")
 
     def test_patch_project(self):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         status, body = self.request(
             "PATCH",
             "/v1/projects/demo",
@@ -268,7 +265,7 @@ class ProjectApiTestCase(IsolatedProjectsMixin, unittest.TestCase):
         self.assertIn("extra.example.com", body["project"]["domains"])
 
     def test_put_files_upload(self):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         status, body = self.request(
             "PUT",
             "/v1/projects/demo/files",
@@ -304,7 +301,7 @@ class ProjectApiTestCase(IsolatedProjectsMixin, unittest.TestCase):
 
     @patch("divband_docker.finalize_delete", return_value=[{"step": "reload_stack", "ok": True}])
     def test_backup_and_restore_endpoints(self, _finalize):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         status, backup_body = self.request("POST", "/v1/projects/demo/backup")
         self.assertEqual(status, 200)
         self.assertIn("backup", backup_body)

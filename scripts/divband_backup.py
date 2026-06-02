@@ -55,7 +55,7 @@ def list_backups(name=None):
     return sorted(path.name for path in BACKUPS_DIR.glob(pattern))
 
 
-def restore_project(name, *, backup_file=None, arvan=True, deploy=False):
+def restore_project(name, *, backup_file=None, deploy=False):
     validate_name(name)
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -97,7 +97,7 @@ def restore_project(name, *, backup_file=None, arvan=True, deploy=False):
     from divband_projects import write_projects
 
     write_projects(projects)
-    regenerate_stack(projects, arvan=arvan)
+    regenerate_stack(projects)
 
     result = {"action": "restored", "project": project, "backup": archive_path.name}
     if deploy:

@@ -16,10 +16,6 @@
     divband_app_group: "{{ ansible_user | default('ubuntu') }}"
 
   tasks:
-    - name: Configure Arvan mirror and host pins
-      ansible.builtin.include_tasks: ../tasks/arvan.yml
-      when: divband_configure_arvan | default(false) | bool
-
     - name: Install and start Docker
       ansible.builtin.include_tasks: ../tasks/docker-debian.yml
 

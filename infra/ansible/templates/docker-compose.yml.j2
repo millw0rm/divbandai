@@ -1,6 +1,6 @@
 services:
   haproxy:
-    image: "{{ 'docker.arvancloud.ir/' if divband_arvan_enabled | bool else '' }}haproxy:2.9-alpine"
+    image: haproxy:2.9-alpine
     container_name: divband-haproxy
     restart: unless-stopped
     ports:
@@ -59,7 +59,7 @@ services:
     networks:
       - divband
 {% else %}
-    image: "{{ 'docker.arvancloud.ir/' if divband_arvan_enabled | bool else '' }}nginx:1.27-alpine"
+    image: nginx:1.27-alpine
     container_name: divband-{{ project.name }}-web
     restart: unless-stopped
     volumes:

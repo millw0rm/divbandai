@@ -19,7 +19,7 @@ Pull deploy on the production host (run ON the VPS):
 
 Environment file (default /etc/divband/deploy.env):
   DIVBAND_APP_DIR, DIVBAND_GHCR_OWNER, DIVBAND_GHCR_TOKEN,
-  DIVBAND_ARVAN_ENABLED, DIVBAND_GIT_REMOTE
+  DIVBAND_GIT_REMOTE
 EOF
 }
 
@@ -81,7 +81,6 @@ main() {
 
   APP_DIR="${DIVBAND_APP_DIR:-/opt/divband}"
   GHCR_OWNER="${DIVBAND_GHCR_OWNER:-millw0rm}"
-  ARVAN="${DIVBAND_ARVAN_ENABLED:-true}"
   GIT_REMOTE="${DIVBAND_GIT_REMOTE:-origin}"
 
   [[ -d "${APP_DIR}/.git" ]] || die "not a git repo: ${APP_DIR}"
@@ -101,14 +100,12 @@ main() {
   git checkout --force "${sha}"
 
   export PYTHONPATH="${APP_DIR}/scripts:${PYTHONPATH:-}"
-  DIVBAND_ARVAN_ENABLED="${ARVAN}" DIVBAND_GHCR_OWNER="${GHCR_OWNER}" DIVBAND_GHCR_TAG="${sha}" \
+  DIVBAND_GHCR_OWNER="${GHCR_OWNER}" DIVBAND_GHCR_TAG="${sha}" \
     python3 -c "
 import os
 from divband_projects import load_projects, regenerate_stack
-arvan = os.environ.get('DIVBAND_ARVAN_ENABLED', 'true').lower() in ('1', 'true', 'yes')
 regenerate_stack(
     load_projects(),
-    arvan=arvan,
     ghcr=True,
     ghcr_owner=os.environ['DIVBAND_GHCR_OWNER'],
     ghcr_tag=os.environ['DIVBAND_GHCR_TAG'],

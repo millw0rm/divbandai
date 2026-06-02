@@ -97,7 +97,6 @@ jobs:
           from divband_projects import load_projects, render_compose
           render_compose(
               load_projects(),
-              arvan=False,
               ghcr=True,
               ghcr_owner='${{ github.repository_owner }}',
               ghcr_tag='${{ github.sha }}',

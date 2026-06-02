@@ -17,7 +17,7 @@ class DivbandBackupTestCase(IsolatedProjectsMixin, unittest.TestCase):
         self.tearDownProjectsModule()
 
     def test_backup_and_list(self):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         result = self.backup_module.backup_project("demo")
         self.assertTrue(result["backup"].startswith("backups/demo-"))
         backups = self.backup_module.list_backups("demo")
@@ -25,18 +25,17 @@ class DivbandBackupTestCase(IsolatedProjectsMixin, unittest.TestCase):
         self.assertTrue(backups[0].endswith(".tar.gz"))
 
     def test_restore_from_backup(self):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         custom = self.projects_dir / "demo/html/custom.html"
         custom.write_text("<h1>saved</h1>")
         backup = self.backup_module.backup_project("demo")
 
-        self.projects_module.delete_project("demo", arvan=False)
+        self.projects_module.delete_project("demo")
         self.assertFalse(self.projects_dir.joinpath("demo").exists())
 
         result = self.backup_module.restore_project(
             "demo",
             backup_file=backup["backup"].split("/", 1)[1],
-            arvan=False,
         )
         self.assertEqual(result["action"], "restored")
         self.assertTrue(custom.exists())
@@ -47,7 +46,7 @@ class DivbandBackupTestCase(IsolatedProjectsMixin, unittest.TestCase):
             self.backup_module.restore_project("demo", backup_file="missing.tar.gz")
 
     def test_backup_archive_contains_manifest(self):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         result = self.backup_module.backup_project("demo")
         archive_path = self.root / result["backup"]
         with tarfile.open(archive_path, "r:gz") as archive:

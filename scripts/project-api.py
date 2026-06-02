@@ -409,7 +409,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
             result = restore_project(
                 name,
                 backup_file=payload.get("backup_file"),
-                arvan=not bool(payload.get("non_arvan_images", False)),
                 deploy=bool(payload.get("deploy", False)),
             )
             audit("project.restore", request_id=self.request_id, details={"name": name})
@@ -468,7 +467,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
         kind = payload.get("kind", "static")
         domains = payload.get("domains", [])
         deploy_now = bool(payload.get("deploy", False))
-        non_arvan_images = bool(payload.get("non_arvan_images", False))
         refresh_content = bool(payload.get("refresh_content", True))
         metadata = project_metadata_from_payload(payload)
 
@@ -481,7 +479,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
                     name,
                     kind=kind,
                     extra_domains=domains,
-                    arvan=not non_arvan_images,
                     refresh_content=refresh_content,
                     metadata=metadata,
                 )
@@ -507,7 +504,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
     def update_project(self, name, payload, *, replace):
         kind = payload.get("kind")
         domains = payload.get("domains")
-        non_arvan_images = bool(payload.get("non_arvan_images", False))
         refresh_content = bool(payload.get("refresh_content", False))
         deploy_now = bool(payload.get("deploy", False))
         metadata = project_metadata_from_payload(payload)
@@ -518,7 +514,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
                     name,
                     kind=kind or "static",
                     domains=domains,
-                    arvan=not non_arvan_images,
                     refresh_content=bool(payload.get("refresh_content", True)),
                     metadata=metadata,
                 )
@@ -529,7 +524,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
                     name,
                     kind=kind,
                     domains=domains,
-                    arvan=not non_arvan_images,
                     refresh_content=refresh_content,
                     metadata=metadata,
                 )
@@ -550,7 +544,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
         self.send_json(HTTPStatus.OK, response)
 
     def remove_project(self, name, payload):
-        non_arvan_images = bool(payload.get("non_arvan_images", False))
         reload_stack = bool(payload.get("reload_stack", True))
         prune_image = bool(payload.get("prune_image", True))
         prune_volumes = bool(payload.get("prune_volumes", False))
@@ -562,7 +555,6 @@ class ProjectApiHandler(BaseHTTPRequestHandler):
         with WRITE_LOCK:
             result = remove_project_record(
                 name,
-                arvan=not non_arvan_images,
                 backup_before=backup_before,
             )
             docker_steps = []

@@ -23,11 +23,6 @@ def main():
         dest="domains",
         help="Extra domain to route to this project. Can be used more than once.",
     )
-    parser.add_argument(
-        "--non-arvan-images",
-        action="store_true",
-        help="Render checked-in docker-compose.yml with Docker Hub image names.",
-    )
     args = parser.parse_args()
 
     try:
@@ -35,7 +30,6 @@ def main():
             args.name,
             kind=args.kind,
             extra_domains=args.domains,
-            arvan=not args.non_arvan_images,
         )
     except ProjectError as exc:
         print(f"error: {exc.message}", file=sys.stderr)

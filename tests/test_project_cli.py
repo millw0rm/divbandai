@@ -54,7 +54,7 @@ class DeleteProjectCliTestCase(IsolatedProjectsMixin, unittest.TestCase):
 
     @patch("divband_docker.finalize_delete", return_value=[])
     def test_delete_project_success(self, _finalize):
-        self.projects_module.create_or_refresh_project("demo", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("demo", kind="static")
         stdout = io.StringIO()
         with patch.object(sys, "argv", ["delete-project.py", "demo", "--no-docker"]):
             with redirect_stdout(stdout):
@@ -64,7 +64,7 @@ class DeleteProjectCliTestCase(IsolatedProjectsMixin, unittest.TestCase):
         self.assertEqual(payload["action"], "deleted")
 
     def test_delete_protected_project(self):
-        self.projects_module.create_or_refresh_project("test", kind="static", arvan=False)
+        self.projects_module.create_or_refresh_project("test", kind="static")
         stderr = io.StringIO()
         with patch.object(sys, "argv", ["delete-project.py", "test", "--no-docker"]):
             with redirect_stderr(stderr):

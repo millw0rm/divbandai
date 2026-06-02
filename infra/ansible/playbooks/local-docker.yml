@@ -11,7 +11,6 @@
 
   vars:
     divband_environment: local
-    divband_arvan_enabled: false
     divband_repo_root: "{{ playbook_dir }}/../../.."
     divband_app_dir: "{{ divband_repo_root }}"
     divband_app_owner: "{{ lookup('env', 'USER') | default('ubuntu', true) }}"

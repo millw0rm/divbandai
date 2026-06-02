@@ -456,7 +456,7 @@ def render_haproxy(projects):
     HAPROXY_CFG.write_text("\n".join(lines))
 
 
-def _compose_service_lines(project, prefix, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
+def _compose_service_lines(project, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     name = project["name"]
     kind = project.get("kind", "static")
     lines = [f"  {name}-web:"]
@@ -475,7 +475,7 @@ def _compose_service_lines(project, prefix, *, ghcr=False, ghcr_owner="", ghcr_t
                 ]
             )
     else:
-        lines.append(f"    image: {prefix}nginx:1.27-alpine")
+        lines.append("    image: nginx:1.27-alpine")
 
     lines.extend(
         [
@@ -516,13 +516,12 @@ def _compose_service_lines(project, prefix, *, ghcr=False, ghcr_owner="", ghcr_t
     return lines
 
 
-def render_compose(projects, arvan=True, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
-    prefix = "docker.arvancloud.ir/" if arvan else ""
+def render_compose(projects, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     tls_enabled = any(project.get("tls") for project in projects)
     lines = [
         "services:",
         "  haproxy:",
-        f"    image: {prefix}haproxy:2.9-alpine",
+        "    image: haproxy:2.9-alpine",
         "    container_name: divband-haproxy",
         "    restart: unless-stopped",
         "    ports:",
@@ -548,7 +547,6 @@ def render_compose(projects, arvan=True, *, ghcr=False, ghcr_owner="", ghcr_tag=
         lines.extend(
             _compose_service_lines(
                 project,
-                prefix,
                 ghcr=ghcr,
                 ghcr_owner=ghcr_owner,
                 ghcr_tag=ghcr_tag,
@@ -558,11 +556,10 @@ def render_compose(projects, arvan=True, *, ghcr=False, ghcr_owner="", ghcr_tag=
     COMPOSE_FILE.write_text("\n".join(lines))
 
 
-def regenerate_stack(projects, *, arvan=True, ghcr=False, ghcr_owner="", ghcr_tag="main"):
+def regenerate_stack(projects, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     render_haproxy(projects)
     render_compose(
         projects,
-        arvan=arvan,
         ghcr=ghcr,
         ghcr_owner=ghcr_owner,
         ghcr_tag=ghcr_tag,
@@ -650,7 +647,6 @@ def create_or_refresh_project(
     *,
     kind="static",
     extra_domains=None,
-    arvan=True,
     refresh_content=True,
     metadata=None,
 ):
@@ -694,7 +690,7 @@ def create_or_refresh_project(
 
     create_project_files(project, refresh_content=refresh_content)
     write_projects(projects)
-    regenerate_stack(projects, arvan=arvan)
+    regenerate_stack(projects)
     return {"action": action, "project": project}
 
 
@@ -703,7 +699,6 @@ def patch_project(
     *,
     kind=None,
     domains=None,
-    arvan=True,
     refresh_content=False,
     metadata=None,
 ):
@@ -752,11 +747,11 @@ def patch_project(
             projects[index] = project
             break
     write_projects(projects)
-    regenerate_stack(projects, arvan=arvan)
+    regenerate_stack(projects)
     return {"action": "updated", "project": project}
 
 
-def replace_project(name, *, kind="static", domains=None, arvan=True, refresh_content=True, metadata=None):
+def replace_project(name, *, kind="static", domains=None, refresh_content=True, metadata=None):
     validate_name(name)
     if kind not in SUPPORTED_KINDS:
         raise ValidationError(
@@ -788,7 +783,7 @@ def replace_project(name, *, kind="static", domains=None, arvan=True, refresh_co
         shutil.rmtree(project_dir)
     create_project_files(project, refresh_content=refresh_content)
     write_projects(remaining)
-    regenerate_stack(remaining, arvan=arvan)
+    regenerate_stack(remaining)
     return {"action": "replaced", "project": project}
 
 
@@ -878,7 +873,7 @@ def detect_drift():
     return drift
 
 
-def delete_project(name, *, arvan=True, backup_before=False):
+def delete_project(name, *, backup_before=False):
     validate_name(name)
     if name in PROTECTED_NAMES:
         raise ProtectedProjectError(name)
@@ -905,7 +900,7 @@ def delete_project(name, *, arvan=True, backup_before=False):
     deleted_tree = delete_project_tree(name)
     steps.append({"step": "project_tree", "ok": True, "deleted": deleted_tree})
 
-    regenerate_stack(remaining, arvan=arvan)
+    regenerate_stack(remaining)
     steps.append({"step": "regenerate_stack", "ok": True})
 
     return {

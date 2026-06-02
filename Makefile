@@ -7,7 +7,7 @@ KIND ?= static
 API_HOST ?= 127.0.0.1
 API_PORT ?= 8080
 
-.PHONY: help up down restart ps logs smoke project project-delete api test-api test-all test-ci setup-ansible-sudo setup-github-actions install-vps-deploy vps-deploy ansible-local ansible-local-validate ansible-remote ansible-remote-arvan ansible-remote-revert ansible-remote-validate ansible-remote-validate-revert ansible-arvan ansible-revert ansible-validate-arvan ansible-validate-revert ansible-toggle-smoke
+.PHONY: help up down restart ps logs smoke project project-delete api test-api test-all test-ci setup-ansible-sudo setup-github-actions install-vps-deploy vps-deploy ansible-local ansible-local-validate ansible-remote ansible-remote-validate
 
 help:
 	@printf 'Available commands:\n'
@@ -37,17 +37,9 @@ help:
 	@printf '  make ansible-local-validate\n'
 	@printf '      Validate Docker, Compose, HAProxy, and routing on localhost\n'
 	@printf '  make ansible-remote INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Install Docker and deploy the VPS stack (no Arvan/DNS)\n'
-	@printf '  make ansible-remote-arvan INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Same as ansible-remote plus Arvan mirror/registry and image prefixes\n'
-	@printf '  make ansible-remote-revert INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Remove Arvan mirror/host pins and redeploy with normal image names\n'
+	@printf '      Install Docker and deploy the VPS stack\n'
 	@printf '  make ansible-remote-validate INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Validate the VPS is in Arvan mode and serving traffic\n'
-	@printf '  make ansible-remote-validate-revert INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Validate the VPS is in non-Arvan mode and serving traffic\n'
-	@printf '  make ansible-toggle-smoke INVENTORY=infra/ansible/inventory.yml\n'
-	@printf '      Run destructive on/off/on toggle validation; requires CONFIRM=true\n'
+	@printf '      Validate the VPS Docker stack and routing\n'
 
 up:
 	docker compose up -d
@@ -113,32 +105,6 @@ ansible-remote:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
 	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/remote-docker.yml
 
-ansible-remote-arvan:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/remote-docker.yml \
-		-e divband_configure_arvan=true -e divband_arvan_enabled=true
-
-ansible-remote-revert:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/remote-docker.yml \
-		-e divband_configure_arvan=false -e divband_arvan_enabled=false
-
 ansible-remote-validate:
 	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=true
-
-ansible-remote-validate-revert:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml -e divband_arvan_enabled=false
-
-ansible-arvan: ansible-remote-arvan
-
-ansible-revert: ansible-remote-revert
-
-ansible-validate-arvan: ansible-remote-validate
-
-ansible-validate-revert: ansible-remote-validate-revert
-
-ansible-toggle-smoke:
-	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
-	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/toggle-smoke.yml -e divband_confirm_toggle_cycle="$(CONFIRM)"
+	"$(ANSIBLE_PLAYBOOK)" -i "$(INVENTORY)" infra/ansible/playbooks/validate-vps.yml

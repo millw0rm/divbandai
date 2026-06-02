@@ -264,19 +264,7 @@ From your laptop (repo checkout):
 make ansible-remote INVENTORY=infra/ansible/inventory.yml
 ```
 
-This installs Docker and deploys the stack only (no Arvan mirror, no DNS).
-
-On Iranian VPSes that cannot reach global Ubuntu/Docker endpoints, opt in explicitly:
-
-```bash
-make ansible-remote-arvan INVENTORY=infra/ansible/inventory.yml
-```
-
-Revert Arvan mirror/host pins and normal Docker Hub image names:
-
-```bash
-make ansible-remote-revert INVENTORY=infra/ansible/inventory.yml
-```
+This installs Docker (standard Ubuntu apt), deploys the stack, and uses Docker Hub image names.
 
 DNS records are **not** part of Ansible. Create them in your DNS panel, or use the
 Project API with `"dns": true` and `DIVBAND_DNS_PROVIDER=arvan` (see [platform-guide.md](platform-guide.md)).
@@ -285,16 +273,8 @@ More detail: [infra/ansible/README.md](../infra/ansible/README.md).
 
 ### Step 3d — Validate the VPS
 
-Arvan mode:
-
 ```bash
 make ansible-remote-validate INVENTORY=infra/ansible/inventory.yml
-```
-
-Non-Arvan mode:
-
-```bash
-make ansible-remote-validate-revert INVENTORY=infra/ansible/inventory.yml
 ```
 
 ### Step 3e — Manual alternative

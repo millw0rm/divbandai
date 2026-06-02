@@ -33,7 +33,7 @@ class DivbandRemoteTestCase(unittest.TestCase):
         environments = self.module.load_environments()
         self.assertIn("production", environments)
         self.assertIn("staging", environments)
-        self.assertTrue(environments["production"]["arvan"])
+        self.assertIn("inventory", environments["production"])
 
     def test_load_environments_from_file(self):
         self.env_file.write_text(
@@ -42,7 +42,6 @@ class DivbandRemoteTestCase(unittest.TestCase):
                     "dev": {
                         "inventory": "inventory.yml",
                         "playbook": "playbook.yml",
-                        "arvan": False,
                     }
                 }
             )
@@ -64,7 +63,6 @@ class DivbandRemoteTestCase(unittest.TestCase):
                     "dev": {
                         "inventory": "inventory.yml",
                         "playbook": "playbook.yml",
-                        "arvan": False,
                     }
                 }
             )
@@ -81,7 +79,6 @@ class DivbandRemoteTestCase(unittest.TestCase):
                     "dev": {
                         "inventory": "inventory.yml",
                         "playbook": "playbook.yml",
-                        "arvan": False,
                     }
                 }
             )

@@ -102,7 +102,7 @@ Ansible operations: [../infra/ansible/README.md](../infra/ansible/README.md).
 
 ### `static` (default)
 
-- **Container**: official **Nginx** image (`nginx:1.27-alpine`, or `docker.arvancloud.ir/nginx:...` when Arvan mode is on).
+- **Container**: official **Nginx** image (`nginx:1.27-alpine` from Docker Hub, or GHCR tags when deploying from CI).
 - **Files created** under `projects/<name>/`:
   - `html/index.html` — welcome page (`Welcome to <name>`).
   - `nginx.conf` — `server_name` for all project domains; `/healthz` returns `ok`; SPA-style `try_files`.
@@ -304,7 +304,6 @@ curl -s -X POST http://127.0.0.1:8080/v1/deploy \
 | `kind` | `static` \| `nextjs` | `static` | Container/scaffold type. |
 | `domains` | string[] | `[]` | Extra hostnames (appended to defaults). |
 | `deploy` | bool | `false` | Run `docker compose up -d --build` after generate. |
-| `non_arvan_images` | bool | `false` | Write Compose without `docker.arvancloud.ir/` prefix. |
 
 The API uses a **process-wide write lock** so concurrent mutating requests do not corrupt generated files. It imports `scripts/divband_projects.py` directly (no subprocess). Errors use `{"error","code","details","request_id"}`.
 
@@ -314,17 +313,17 @@ The API uses a **process-wide write lock** so concurrent mutating requests do no
 
 Both paths read `vars/projects.yml` and render Jinja templates equivalent to the Python generator output.
 
-| Target | Playbook | App directory | Arvan |
-| --- | --- | --- | --- |
-| Local | `playbooks/local-docker.yml` | Repo root | Off (`divband_arvan_enabled: false`) |
-| Remote | `playbooks/remote-docker.yml` | `/opt/divband` | **Required** `-e divband_arvan_enabled=true\|false` |
+| Target | Playbook | App directory |
+| --- | --- | --- |
+| Local | `playbooks/local-docker.yml` | Repo root |
+| Remote | `playbooks/remote-docker.yml` | `/opt/divband` |
 
 ```bash
 make ansible-local
 make ansible-remote INVENTORY=infra/ansible/inventory.yml
 ```
 
-Remote playbooks can pin Arvan mirror/registry when the VPS cannot reach global Ubuntu/Docker endpoints (see [infra/ansible/README.md](../infra/ansible/README.md)).
+Ansible installs Docker from standard Ubuntu apt and uses Docker Hub image names in Compose (see [infra/ansible/README.md](../infra/ansible/README.md)).
 
 ---
 
@@ -356,8 +355,8 @@ Always present:
 
 Image sources:
 
-- **Local / non-Arvan**: `haproxy:2.9-alpine`, `nginx:1.27-alpine` from Docker Hub.
-- **Arvan mode** (remote default): prefix `docker.arvancloud.ir/` on pull-only images; Next.js images are still built locally as `divband-{name}:local`.
+- **Default**: `haproxy:2.9-alpine`, `nginx:1.27-alpine` from Docker Hub.
+- **GHCR deploy**: project images tagged `ghcr.io/<owner>/divband-<name>:<sha>`; Next.js may still build locally as `divband-{name}:local` when not using GHCR.
 
 Next.js services set `NODE_ENV=production` and require `docker compose build` (or `up --build`) before first run.
 
@@ -439,7 +438,6 @@ Ansible templates (`haproxy.cfg.j2`, `docker-compose.yml.j2`, `nginx.conf.j2`) i
 | `divband_unknown_domain` | Host used in smoke test for 404 (`unknown.divband.com`). |
 | `divband_install_docker` | Install Docker via apt when true. |
 | `divband_deploy_stack` | Render configs and `docker compose up -d`. |
-| `divband_arvan_hosts` | IPs to pin `mirror.arvancloud.ir` / `docker.arvancloud.ir` on remote hosts. |
 
 ---
 
@@ -464,7 +462,7 @@ Ansible templates (`haproxy.cfg.j2`, `docker-compose.yml.j2`, `nginx.conf.j2`) i
     ├── vars/projects.yml           # Project registry
     ├── vars/common.yml
     ├── templates/                  # Jinja: haproxy, compose, nginx
-    ├── tasks/                      # docker-debian, project-stack, smoke, arvan
+    ├── tasks/                      # docker-debian, project-stack, smoke
     └── playbooks/                  # local-docker, remote-docker, validate-*
 ```
 

@@ -8,7 +8,7 @@ The current deployable system is:
 - HAProxy as the public HTTP entrypoint.
 - A single internal Nginx project named `test`.
 - Host routing for `divbandai.ir`, `www.divbandai.ir`, and `test.divbandai.ir`.
-- Container images pulled through `docker.arvancloud.ir`.
+- Container images from Docker Hub (`nginx`, `haproxy`, or GHCR for app builds).
 
 There is no Kubernetes or Terraform in this branch. **GitHub Actions** builds and
 pushes to GHCR; the **VPS pulls** images and deploys via webhook. See
@@ -16,8 +16,7 @@ pushes to GHCR; the **VPS pulls** images and deploys via webhook. See
 handled by a **local Project API** and
 `scripts/create-project.py`, which generate Docker Compose services, HAProxy
 routes, and project scaffolds (Nginx static or Next.js). Ansible covers VPS
-bootstrap: Arvan mirror/registry toggles, Docker install, Compose deploy, and
-smoke tests.
+bootstrap: Docker install, Compose deploy, and smoke tests.
 
 **Full documentation:** [docs/getting-started.md](docs/getting-started.md) · [docs/platform-guide.md](docs/platform-guide.md)
 
@@ -161,5 +160,4 @@ into Ansible tasks.
 
 The Ansible setup lives in [infra/ansible](infra/ansible/README.md). It has
 separate local and remote entrypoints, both covering Docker installation,
-HAProxy/Nginx config rendering, Compose startup, and smoke tests. Arvan mirror/registry
-is optional: `make ansible-remote-arvan`. DNS is optional via the Project API (`"dns": true`).
+HAProxy/Nginx config rendering, Compose startup, and smoke tests. DNS is optional via the Project API (`"dns": true`).

@@ -2,28 +2,17 @@
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
-    cache_valid_time: 0
+    cache_valid_time: 3600
   when:
     - divband_install_docker | bool
     - ansible_facts.os_family == "Debian"
 
-- name: Install Docker packages from Arvan-compatible pins
-  ansible.builtin.apt:
-    name: "{{ divband_arvan_docker_packages }}"
-    state: present
-    allow_downgrade: true
-  when:
-    - divband_install_docker | bool
-    - divband_configure_arvan | default(false) | bool
-    - ansible_facts.os_family == "Debian"
-
-- name: Install Docker packages from current apt sources
+- name: Install Docker packages
   ansible.builtin.apt:
     name: "{{ divband_default_docker_packages }}"
     state: present
   when:
     - divband_install_docker | bool
-    - not (divband_configure_arvan | default(false) | bool)
     - ansible_facts.os_family == "Debian"
 
 - name: Enable Docker service

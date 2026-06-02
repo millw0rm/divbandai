@@ -1,15 +1,11 @@
 name: Deploy Divband VPS
-description: Run Ansible remote-docker (and optional validate-vps) via SSH or on-host (local).
+description: Run Ansible remote-docker (and optional validate-vps) via SSH or on-host (local). Legacy; prefer webhook pull deploy.
 
 inputs:
   deploy_mode:
     description: "ssh: connect to DIVBAND_VPS_HOST; local: Ansible on this runner (self-hosted on VPS)"
     required: false
     default: ssh
-  arvan_enabled:
-    description: Enable Arvan mirror and registry on the VPS
-    required: false
-    default: "true"
   validate_after_deploy:
     description: Run validate-vps after deploy
     required: false
@@ -53,7 +49,6 @@ runs:
         DIVBAND_SSH_PRIVATE_KEY: ${{ inputs.ssh_private_key }}
         DIVBAND_VPS_HOST: ${{ inputs.vps_host }}
         DIVBAND_VPS_USER: ${{ inputs.vps_user }}
-        DIVBAND_ARVAN_ENABLED: ${{ inputs.arvan_enabled }}
         DIVBAND_VALIDATE_AFTER_DEPLOY: ${{ inputs.validate_after_deploy }}
         DIVBAND_USE_GHCR: ${{ inputs.use_ghcr }}
         DIVBAND_GHCR_OWNER: ${{ inputs.ghcr_owner }}

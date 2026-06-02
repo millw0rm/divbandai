@@ -1,6 +1,6 @@
 services:
   haproxy:
-    image: docker.arvancloud.ir/haproxy:2.9-alpine
+    image: haproxy:2.9-alpine
     container_name: divband-haproxy
     restart: unless-stopped
     ports:
@@ -14,7 +14,7 @@ services:
       - divband
 
   test-web:
-    image: docker.arvancloud.ir/nginx:1.27-alpine
+    image: nginx:1.27-alpine
     container_name: divband-test-web
     restart: unless-stopped
     volumes:

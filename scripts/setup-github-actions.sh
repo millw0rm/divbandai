@@ -26,7 +26,6 @@ ENV_FILE=""
 GHCR_TOKEN=""
 WEBHOOK_URL=""
 WEBHOOK_SECRET=""
-ARVAN_ENABLED="true"
 VPS_HOST=""
 VPS_USER="ubuntu"
 KEY_FILE=""
@@ -51,7 +50,6 @@ EOF
   printf '  --user USER            SSH user (default: ubuntu)\n'
   printf '  --key-file PATH        Private key to store in GitHub (default: %s)\n' "${PRIVATE_KEY}"
   printf '  --generate-key         Create a new ed25519 deploy key pair\n'
-  printf '  --arvan true|false     Set DIVBAND_ARVAN_ENABLED repository variable\n'
   printf '  --copy-ssh-id          Run ssh-copy-id with the deploy public key\n'
   printf '  --require-ci           Enable branch protection requiring CI jobs (after first green run)\n'
   printf '  --run-deploy           Trigger the manual Deploy workflow when finished\n'
@@ -360,7 +358,6 @@ main() {
       --user) VPS_USER="$2"; shift 2 ;;
       --key-file) KEY_FILE="$2"; shift 2 ;;
       --generate-key) GENERATE_KEY=true; shift ;;
-      --arvan) ARVAN_ENABLED="$2"; shift 2 ;;
       --copy-ssh-id) COPY_SSH_ID=true; shift ;;
       --require-ci) REQUIRE_CI=true; shift ;;
       --run-deploy) RUN_DEPLOY=true; shift ;;
@@ -382,7 +379,6 @@ main() {
 
   VPS_HOST="${VPS_HOST:-${DIVBAND_VPS_HOST:-}}"
   VPS_USER="${VPS_USER:-${DIVBAND_VPS_USER:-ubuntu}}"
-  ARVAN_ENABLED="${ARVAN_ENABLED:-${DIVBAND_ARVAN_ENABLED:-true}}"
   if [[ "${DIVBAND_COPY_SSH_ID:-}" == "1" ]]; then
     COPY_SSH_ID=true
   fi
@@ -408,14 +404,9 @@ main() {
   fi
   [[ -n "${WEBHOOK_URL}" && -n "${WEBHOOK_SECRET}" ]] || die "webhook URL and secret are required"
 
-  if [[ "${ASSUME_YES}" != "true" ]]; then
-    ARVAN_ENABLED="$(prompt_default "Arvan mirror on VPS (true/false)" "${ARVAN_ENABLED}")"
-  fi
-
   create_environment
   set_secret_from_value DIVBAND_DEPLOY_WEBHOOK_URL "${WEBHOOK_URL}"
   set_secret_from_value DIVBAND_DEPLOY_WEBHOOK_SECRET "${WEBHOOK_SECRET}"
-  set_repo_variable DIVBAND_ARVAN_ENABLED "${ARVAN_ENABLED}"
 
   if [[ "${LEGACY_SSH}" == "true" ]]; then
     resolve_vps_host
@@ -442,8 +433,6 @@ main() {
 
   if [[ "${RUN_DEPLOY}" == "true" ]]; then
     log "Triggering deploy workflow"
-    arvan_input="${ARVAN_ENABLED}"
-    [[ "${arvan_input}" == "true" || "${arvan_input}" == "1" ]] && arvan_input=true || arvan_input=false
     gh_repo_args
     run gh workflow run deploy.yml "${GH_REPO_ARGS[@]}"
   fi

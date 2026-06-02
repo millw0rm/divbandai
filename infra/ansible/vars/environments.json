@@ -1,12 +1,10 @@
 {
   "production": {
     "inventory": "infra/ansible/inventory.yml",
-    "playbook": "infra/ansible/playbooks/remote-docker.yml",
-    "arvan": false
+    "playbook": "infra/ansible/playbooks/remote-docker.yml"
   },
   "staging": {
     "inventory": "infra/ansible/inventory.yml",
-    "playbook": "infra/ansible/playbooks/local-docker.yml",
-    "arvan": false
+    "playbook": "infra/ansible/playbooks/local-docker.yml"
   }
 }

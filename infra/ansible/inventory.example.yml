@@ -4,3 +4,5 @@ all:
     divband-vps:
       ansible_host: 130.185.123.76
       ansible_user: ubuntu
+      # Optional: set true only on hosts that cannot reach archive.ubuntu.com
+      # divband_apt_mirror_required: true

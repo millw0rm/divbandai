@@ -56,42 +56,13 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo systemctl enable --now docker
 ```
 
-### Option B: Arvan Ubuntu mirror
-
-Use this when the VM can reach Arvan but cannot resolve or reach the default
-Ubuntu/Docker endpoints. On the VM:
+### Option B: Ubuntu packages (matches Ansible)
 
 ```bash
-sudo cp /etc/hosts /etc/hosts.divband.bak.$(date +%Y%m%d%H%M%S)
-sudo sed -i '/mirror.arvancloud.ir/d;/docker.arvancloud.ir/d' /etc/hosts
-printf '%s\n' \
-  '185.143.232.201 mirror.arvancloud.ir docker.arvancloud.ir' \
-  '185.143.232.253 mirror.arvancloud.ir docker.arvancloud.ir' \
-  | sudo tee -a /etc/hosts >/dev/null
-
-sudo cp /etc/apt/sources.list.d/ubuntu.sources \
-  /etc/apt/sources.list.d/ubuntu.sources.divband.bak.$(date +%Y%m%d%H%M%S)
-
-sudo tee /etc/apt/sources.list.d/ubuntu.sources >/dev/null <<'EOF'
-Types: deb
-URIs: https://mirror.arvancloud.ir/ubuntu/
-Suites: noble noble-updates noble-backports
-Components: main restricted universe multiverse
-Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
-EOF
-
-sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get update
-sudo apt-get install -y \
-  docker.io=24.0.7-0ubuntu4 \
-  docker-compose-v2=2.24.6+ds1-0ubuntu2 \
-  containerd=1.7.12-0ubuntu4 \
-  runc=1.1.12-0ubuntu3
+sudo apt-get install -y docker.io docker-compose-v2
 sudo systemctl enable --now docker
 ```
-
-The exact package pins above avoid stale `noble-updates` Docker package URLs
-observed on the Arvan mirror during the first VPS setup.
 
 Optional non-root Docker access:
 

@@ -29,12 +29,10 @@ def load_environments():
             "production": {
                 "inventory": str(DEFAULT_INVENTORY.relative_to(ROOT)),
                 "playbook": str(DEFAULT_PLAYBOOK.relative_to(ROOT)),
-                "arvan": True,
             },
             "staging": {
                 "inventory": str(DEFAULT_INVENTORY.relative_to(ROOT)),
                 "playbook": str(DEFAULT_PLAYBOOK.relative_to(ROOT)),
-                "arvan": False,
             },
         }
     return json.loads(ENVIRONMENTS_FILE.read_text())
@@ -70,24 +68,6 @@ def run_ansible(environment, *, extra_vars=None):
         inventory,
         playbook,
     ]
-    if config.get("arvan", False):
-        command.extend(
-            [
-                "-e",
-                "divband_configure_arvan=true",
-                "-e",
-                "divband_arvan_enabled=true",
-            ]
-        )
-    else:
-        command.extend(
-            [
-                "-e",
-                "divband_configure_arvan=false",
-                "-e",
-                "divband_arvan_enabled=false",
-            ]
-        )
     for key, value in (extra_vars or {}).items():
         if isinstance(value, bool):
             rendered = "true" if value else "false"

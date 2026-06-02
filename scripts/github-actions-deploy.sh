@@ -7,7 +7,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANSIBLE_DIR="${ROOT}/infra/ansible"
 
 DEPLOY_MODE="${DIVBAND_DEPLOY_MODE:-ssh}"
-ARVAN_ENABLED="${DIVBAND_ARVAN_ENABLED:-true}"
 VALIDATE_AFTER_DEPLOY="${DIVBAND_VALIDATE_AFTER_DEPLOY:-true}"
 USE_GHCR="${DIVBAND_USE_GHCR:-false}"
 GHCR_OWNER="${DIVBAND_GHCR_OWNER:-millw0rm}"
@@ -95,7 +94,7 @@ configure_ssh() {
 }
 
 build_ansible_extra() {
-  ANSIBLE_EXTRA=(-e "divband_arvan_enabled=${ARVAN_ENABLED}")
+  ANSIBLE_EXTRA=()
   if [[ "${USE_GHCR}" == "true" ]]; then
     ANSIBLE_EXTRA+=(
       -e "divband_use_ghcr=true"

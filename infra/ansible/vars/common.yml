@@ -4,10 +4,6 @@ divband_unknown_domain: unknown.divband.com
 divband_install_docker: true
 divband_deploy_stack: true
 
-# Arvan mirror/registry: off by default; enable explicitly (make ansible-remote-arvan).
-divband_configure_arvan: false
-divband_arvan_enabled: false
-
 divband_use_ghcr: false
 divband_ghcr_registry: ghcr.io
 divband_ghcr_owner: millw0rm
@@ -16,25 +12,6 @@ divband_ghcr_user: "{{ divband_ghcr_owner | lower }}"
 divband_ghcr_token: ""
 
 divband_backup_dir: /etc/divband/backups
-divband_ubuntu_sources_path: /etc/apt/sources.list.d/ubuntu.sources
-divband_ubuntu_sources_backup: /etc/divband/backups/ubuntu.sources.original
-divband_hosts_backup: /etc/divband/backups/hosts.original
-
-divband_arvan_hosts:
-  - ip: 185.143.232.201
-    names:
-      - mirror.arvancloud.ir
-      - docker.arvancloud.ir
-  - ip: 185.143.232.253
-    names:
-      - mirror.arvancloud.ir
-      - docker.arvancloud.ir
-
-divband_arvan_docker_packages:
-  - docker.io=24.0.7-0ubuntu4
-  - docker-compose-v2=2.24.6+ds1-0ubuntu2
-  - containerd=1.7.12-0ubuntu4
-  - runc=1.1.12-0ubuntu3
 
 divband_default_docker_packages:
   - docker.io

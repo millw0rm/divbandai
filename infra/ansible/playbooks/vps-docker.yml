@@ -1,5 +1,3 @@
 ---
-- ansible.builtin.import_playbook: remote-docker.yml
-  vars:
-    divband_arvan_enabled: false
-    divband_configure_arvan: false
+- name: Manage Divband remote Docker environment (compatibility wrapper)
+  ansible.builtin.import_playbook: remote-docker.yml
