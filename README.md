@@ -10,9 +10,10 @@ The current deployable system is:
 - Host routing for `test.divband.com`.
 - Container images pulled through `docker.arvancloud.ir`.
 
-There is no Ansible, Kubernetes, Terraform, GitLab CI, runner automation, or app
-control plane in this branch. The manual SSH flow is documented first so it can
-be converted into Ansible later only after the simple path is proven.
+There is no Kubernetes, Terraform, GitLab CI, runner automation, or app control
+plane in this branch. The first Ansible layer is deliberately limited to the
+manual VPS event: Arvan mirror/registry toggles, Docker package installation,
+Compose rendering, and smoke tests.
 
 ## Repository Map
 
@@ -28,9 +29,14 @@ be converted into Ansible later only after the simple path is proven.
 │       ├── nginx.conf
 │       └── html/
 │           └── index.html
-└── docs/
-    ├── architecture.md
-    └── manual-ssh-deployment.md
+├── docs/
+│   ├── architecture.md
+│   └── manual-ssh-deployment.md
+└── infra/
+    └── ansible/
+        ├── README.md
+        └── playbooks/
+            └── vps-docker.yml
 ```
 
 ## Local Run
@@ -76,3 +82,7 @@ Then open `http://test.divband.com/`.
 Follow [docs/manual-ssh-deployment.md](docs/manual-ssh-deployment.md). The steps
 are intentionally explicit and operator-friendly so they can later be converted
 into Ansible tasks.
+
+The first reversible Ansible version of the VPS flow lives in
+[infra/ansible](infra/ansible/README.md). It can apply or revert the Arvan
+mirror/registry configuration with `divband_arvan_enabled=true|false`.

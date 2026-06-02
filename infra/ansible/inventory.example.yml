@@ -1,0 +1,6 @@
+---
+all:
+  hosts:
+    divband-vps:
+      ansible_host: 94.101.178.146
+      ansible_user: ubuntu

@@ -1,6 +1,9 @@
 .DEFAULT_GOAL := help
+INVENTORY ?= infra/ansible/inventory.yml
+ANSIBLE_LOCAL_TEMP ?= /tmp/ansible-local
+ANSIBLE_REMOTE_TEMP ?= /tmp/ansible-remote
 
-.PHONY: help up down restart ps logs smoke
+.PHONY: help up down restart ps logs smoke ansible-arvan ansible-revert
 
 help:
 	@printf 'Available commands:\n'
@@ -10,6 +13,10 @@ help:
 	@printf '  make ps       Show container status\n'
 	@printf '  make logs     Follow container logs\n'
 	@printf '  make smoke    Verify test.divband.com routing locally\n'
+	@printf '  make ansible-arvan INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Apply Arvan apt/registry settings and deploy the VPS stack\n'
+	@printf '  make ansible-revert INVENTORY=infra/ansible/inventory.yml\n'
+	@printf '      Revert Arvan apt/registry settings and redeploy with normal image names\n'
 
 up:
 	docker compose up -d
@@ -28,3 +35,11 @@ logs:
 
 smoke:
 	curl -fsS -H "Host: test.divband.com" http://127.0.0.1/ | grep -q "Welcome to test"
+
+ansible-arvan:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/vps-docker.yml -e divband_arvan_enabled=true
+
+ansible-revert:
+	ANSIBLE_LOCAL_TEMP="$(ANSIBLE_LOCAL_TEMP)" ANSIBLE_REMOTE_TEMP="$(ANSIBLE_REMOTE_TEMP)" \
+	ansible-playbook -i "$(INVENTORY)" infra/ansible/playbooks/vps-docker.yml -e divband_arvan_enabled=false

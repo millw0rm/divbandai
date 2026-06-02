@@ -10,6 +10,7 @@ traffic path.
 | HAProxy | `config/haproxy/haproxy.cfg` | Public HTTP entrypoint and host-header router. |
 | Test project | `projects/test` | Static Nginx site for `test.divband.com`. |
 | Docker Compose | `docker-compose.yml` | Defines and connects the containers on one VM. |
+| VPS Ansible | `infra/ansible` | Reversible automation for Arvan mirror/registry settings and Docker stack deployment. |
 
 ## Request Flow
 
@@ -35,12 +36,12 @@ Included:
 - HAProxy HTTP routing.
 - Static Nginx project.
 - Manual SSH deployment runbook.
+- Reversible Ansible playbook for the VPS setup event.
 
 Not included:
 
 - TLS certificates.
 - Kubernetes.
-- Ansible.
 - Terraform.
 - GitLab CI or runners.
 - Multi-tenant project provisioning.

@@ -5,3 +5,4 @@ dist/
 .secrets/
 .tools/
 .venv-ansible/
+infra/ansible/inventory.yml
