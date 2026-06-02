@@ -8,6 +8,7 @@ The current deployable system is:
 - HAProxy as the public HTTP entrypoint.
 - A single internal Nginx project named `test`.
 - Host routing for `test.divband.com`.
+- Container images pulled through `docker.arvancloud.ir`.
 
 There is no Ansible, Kubernetes, Terraform, GitLab CI, runner automation, or app
 control plane in this branch. The manual SSH flow is documented first so it can
