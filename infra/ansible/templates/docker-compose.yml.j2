@@ -25,10 +25,14 @@ services:
 {% for project in divband_projects %}
   {{ project.name }}-web:
 {% if project.kind | default('static') in ['nextjs', 'node', 'python', 'docker'] %}
+{% if divband_use_ghcr | default(false) | bool %}
+    image: {{ divband_ghcr_registry }}/{{ divband_ghcr_owner | lower }}/divband-{{ project.name }}:{{ divband_ghcr_image_tag }}
+{% else %}
     image: divband-{{ project.name }}:local
     build:
       context: ./projects/{{ project.name }}
       dockerfile: {{ project.dockerfile | default('Dockerfile') }}
+{% endif %}
     container_name: divband-{{ project.name }}-web
     restart: unless-stopped
 {% if project.env is defined or project.kind | default('static') == 'nextjs' %}

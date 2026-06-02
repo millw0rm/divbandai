@@ -31,6 +31,10 @@
     mode: "0644"
   when: divband_deploy_stack | bool
 
+- name: Configure GHCR access
+  ansible.builtin.include_tasks: ghcr.yml
+  when: divband_deploy_stack | bool
+
 - name: Copy project directories
   ansible.builtin.copy:
     src: "{{ divband_repo_root }}/projects/{{ item.name }}/"
@@ -72,7 +76,7 @@
   register: divband_compose_pull
   when: divband_deploy_stack | bool
 
-- name: Build Compose images
+- name: Build Compose images locally
   ansible.builtin.command:
     cmd: docker compose build
     chdir: "{{ divband_app_dir }}"
@@ -80,7 +84,8 @@
   register: divband_compose_build
   when:
     - divband_deploy_stack | bool
-    - divband_projects | selectattr('kind', 'defined') | selectattr('kind', 'equalto', 'nextjs') | list | length > 0
+    - not (divband_use_ghcr | default(false) | bool)
+    - divband_projects | selectattr('kind', 'defined') | selectattr('kind', 'in', ['nextjs', 'node', 'python', 'docker']) | list | length > 0
 
 - name: Start Compose stack
   ansible.builtin.command:

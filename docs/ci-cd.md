@@ -1,8 +1,9 @@
 # CI/CD with GitHub Actions
 
 Divband uses GitHub Actions for continuous integration and production deployment
-to the VPS. There is no separate container registry: runtime images are pulled on
-the host (Arvan or Docker Hub), and Next.js apps build as `divband-<name>:local`.
+to the VPS. **Buildable** projects (`nextjs`, `node`, `python`, `docker`) are built
+in CI, pushed to **GitHub Container Registry (GHCR)**, and pulled on the VPS by tag
+(usually the commit SHA). Static sites still use the Nginx image plus mounted HTML.
 
 ## Workflows
 
@@ -14,11 +15,11 @@ the host (Arvan or Docker Hub), and Next.js apps build as `divband-<name>:local`
 ### CI pipeline
 
 1. **unit-tests** — `make test-api` (Python 3.12, PyYAML).
-2. **integration** — `docker compose up`, routing smoke (`make smoke`), `validate-local.yml`.
-3. **deploy-production** (push to `main` only) — Ansible deploy to the VPS after integration succeeds.
+2. **publish-images** — build each buildable project and push to `ghcr.io/<owner>/divband-<name>:<sha>` (and `:main` on `main`).
+3. **integration** — render Compose with GHCR image refs, `docker compose pull/up`, smoke, `validate-local.yml`.
+4. **deploy-production** (push to `main` only) — Ansible deploy to the VPS with `divband_use_ghcr=true` and the same SHA tag.
 
-CI uses Docker Hub image names (no `docker.arvancloud.ir/` prefix) so GitHub-hosted
-runners can pull images reliably.
+HAProxy/Nginx base images in CI still use Docker Hub (no Arvan prefix on runners).
 
 ### Deploy pipeline
 
@@ -69,10 +70,15 @@ Useful flags: `--help`, `--dry-run`, `--host`, `--key-file`, `--arvan false`, `-
 | `DIVBAND_SSH_PRIVATE_KEY` | Yes | Full private key (PEM) for the deploy user |
 | `DIVBAND_VPS_HOST` | Yes | VPS IP or hostname |
 | `DIVBAND_VPS_USER` | No | SSH user; defaults to `ubuntu` |
+| `DIVBAND_GHCR_TOKEN` | No | PAT with `read:packages` so the VPS can pull **private** GHCR images |
 
 4. Optional **repository variable** `DIVBAND_ARVAN_ENABLED` — set to `false` to skip Arvan prefixes.
 
-5. Recommended: **branch protection** on `main` — require CI jobs to pass before merge
+5. **GHCR visibility** — after the first publish, open
+   `https://github.com/users/<you>/packages/container/divband-test2/settings` (per package)
+   and set visibility to **Public**, *or* keep packages private and set `DIVBAND_GHCR_TOKEN`.
+
+6. Recommended: **branch protection** on `main` — require CI jobs to pass before merge
    (or re-run the script with `--require-ci` after the first green workflow).
 
 ## One-time VPS setup
@@ -134,10 +140,23 @@ export DIVBAND_ARVAN_ENABLED=true
 bash scripts/github-actions-deploy.sh
 ```
 
+## GHCR image names
+
+| Project kind | Image |
+| --- | --- |
+| `nextjs`, `node`, `python`, `docker` | `ghcr.io/<owner>/divband-<name>:<tag>` |
+| `static` | `nginx:1.27-alpine` (+ volume mounts), not stored in GHCR |
+
+Publish locally (after `docker login ghcr.io`):
+
+```bash
+export GHCR_OWNER=millw0rm GHCR_TAG=$(git rev-parse HEAD)
+python3 scripts/ghcr_publish.py
+```
+
 ## What CI/CD does not cover
 
 - TLS certificates and DNS (still operator / DNS provider).
-- GitHub Container Registry (images are not published to `ghcr.io`).
 - Multi-environment staging hosts (only `production` is wired today).
 
 See also [getting-started.md](getting-started.md) and [infra/ansible/README.md](../infra/ansible/README.md).

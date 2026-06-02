@@ -99,6 +99,17 @@
         success_msg: "Project container divband-{{ item.name }}-web is present."
       loop: "{{ divband_projects }}"
 
+    - name: Validate GHCR image references in Compose
+      ansible.builtin.assert:
+        that:
+          - ("'ghcr.io/' ~ (divband_ghcr_owner | lower) ~ '/divband-' ~ item.name ~ ':' ~ divband_ghcr_image_tag) in divband_compose_content"
+        fail_msg: "Expected GHCR image for project {{ item.name }} is missing from docker-compose.yml."
+        success_msg: "GHCR image reference for {{ item.name }} is present."
+      loop: "{{ divband_projects }}"
+      when:
+        - divband_use_ghcr | default(false) | bool
+        - item.kind | default('static') in ['nextjs', 'node', 'python', 'docker']
+
     - name: Smoke test remote stack routing
       ansible.builtin.include_tasks: ../tasks/smoke.yml
 

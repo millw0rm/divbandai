@@ -32,7 +32,12 @@ REACT_VERSION = "19.2.7"
 PROTECTED_NAMES = {"test"}
 SUPPORTED_KINDS = {"static", "nextjs", "node", "python", "docker"}
 BUILDABLE_KINDS = {"nextjs", "node", "python", "docker"}
+GHCR_REGISTRY = os.environ.get("DIVBAND_GHCR_REGISTRY", "ghcr.io")
 DEFAULT_HEALTH_PATH = "/healthz"
+
+
+def ghcr_image_ref(name, owner, tag, registry=GHCR_REGISTRY):
+    return f"{registry}/{owner.lower()}/divband-{name}:{tag}"
 DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
 )
@@ -451,21 +456,24 @@ def render_haproxy(projects):
     HAPROXY_CFG.write_text("\n".join(lines))
 
 
-def _compose_service_lines(project, prefix):
+def _compose_service_lines(project, prefix, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     name = project["name"]
     kind = project.get("kind", "static")
     lines = [f"  {name}-web:"]
 
     if kind in BUILDABLE_KINDS:
-        dockerfile = project.get("dockerfile", "Dockerfile")
-        lines.extend(
-            [
-                f"    image: divband-{name}:local",
-                "    build:",
-                f"      context: ./projects/{name}",
-                f"      dockerfile: {dockerfile}",
-            ]
-        )
+        if ghcr:
+            lines.append(f"    image: {ghcr_image_ref(name, ghcr_owner, ghcr_tag)}")
+        else:
+            dockerfile = project.get("dockerfile", "Dockerfile")
+            lines.extend(
+                [
+                    f"    image: divband-{name}:local",
+                    "    build:",
+                    f"      context: ./projects/{name}",
+                    f"      dockerfile: {dockerfile}",
+                ]
+            )
     else:
         lines.append(f"    image: {prefix}nginx:1.27-alpine")
 
@@ -508,7 +516,7 @@ def _compose_service_lines(project, prefix):
     return lines
 
 
-def render_compose(projects, arvan=True):
+def render_compose(projects, arvan=True, *, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     prefix = "docker.arvancloud.ir/" if arvan else ""
     tls_enabled = any(project.get("tls") for project in projects)
     lines = [
@@ -537,14 +545,28 @@ def render_compose(projects, arvan=True):
             lines.append(f"      - {project['name']}-web")
     lines.extend(["    networks:", "      - divband", ""])
     for project in projects:
-        lines.extend(_compose_service_lines(project, prefix))
+        lines.extend(
+            _compose_service_lines(
+                project,
+                prefix,
+                ghcr=ghcr,
+                ghcr_owner=ghcr_owner,
+                ghcr_tag=ghcr_tag,
+            )
+        )
     lines.extend(["networks:", "  divband:", "    name: divband", ""])
     COMPOSE_FILE.write_text("\n".join(lines))
 
 
-def regenerate_stack(projects, *, arvan=True):
+def regenerate_stack(projects, *, arvan=True, ghcr=False, ghcr_owner="", ghcr_tag="main"):
     render_haproxy(projects)
-    render_compose(projects, arvan=arvan)
+    render_compose(
+        projects,
+        arvan=arvan,
+        ghcr=ghcr,
+        ghcr_owner=ghcr_owner,
+        ghcr_tag=ghcr_tag,
+    )
 
 
 def create_project_files(project, *, refresh_content=True):

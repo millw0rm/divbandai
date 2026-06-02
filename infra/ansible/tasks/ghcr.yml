@@ -1,0 +1,10 @@
+---
+- name: Log in to GHCR on host
+  ansible.builtin.shell:
+    cmd: set -o pipefail && printf '%s' "{{ divband_ghcr_token }}" | docker login {{ divband_ghcr_registry }} -u "{{ divband_ghcr_user }}" --password-stdin
+  changed_when: "'Login Succeeded' in divband_ghcr_login.stderr or 'Login Succeeded' in divband_ghcr_login.stdout"
+  register: divband_ghcr_login
+  no_log: true
+  when:
+    - divband_use_ghcr | bool
+    - divband_ghcr_token | length > 0

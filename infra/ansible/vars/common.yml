@@ -4,6 +4,13 @@ divband_unknown_domain: unknown.divband.com
 divband_install_docker: true
 divband_deploy_stack: true
 
+divband_use_ghcr: false
+divband_ghcr_registry: ghcr.io
+divband_ghcr_owner: millw0rm
+divband_ghcr_image_tag: main
+divband_ghcr_user: "{{ divband_ghcr_owner | lower }}"
+divband_ghcr_token: ""
+
 divband_backup_dir: /etc/divband/backups
 divband_ubuntu_sources_path: /etc/apt/sources.list.d/ubuntu.sources
 divband_ubuntu_sources_backup: /etc/divband/backups/ubuntu.sources.original

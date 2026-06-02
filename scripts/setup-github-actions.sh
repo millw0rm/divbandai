@@ -23,6 +23,7 @@ COPY_SSH_ID=false
 REQUIRE_CI=false
 DRY_RUN=false
 ENV_FILE=""
+GHCR_TOKEN=""
 ARVAN_ENABLED="true"
 VPS_HOST=""
 VPS_USER="ubuntu"
@@ -51,6 +52,7 @@ EOF
   printf '  --copy-ssh-id          Run ssh-copy-id with the deploy public key\n'
   printf '  --require-ci           Enable branch protection requiring CI jobs (after first green run)\n'
   printf '  --run-deploy           Trigger the manual Deploy workflow when finished\n'
+  printf '  --ghcr-token TOKEN     Also store DIVBAND_GHCR_TOKEN for VPS GHCR pulls\n'
   printf '  --dry-run              Print actions without calling GitHub\n'
   printf '  -h, --help             Show this help\n'
 }
@@ -356,6 +358,7 @@ main() {
       --copy-ssh-id) COPY_SSH_ID=true; shift ;;
       --require-ci) REQUIRE_CI=true; shift ;;
       --run-deploy) RUN_DEPLOY=true; shift ;;
+      --ghcr-token) GHCR_TOKEN="$2"; shift 2 ;;
       --dry-run) DRY_RUN=true; shift ;;
       -h|--help) usage; exit 0 ;;
       *) die "unknown option: $1 (use --help)" ;;
@@ -374,6 +377,7 @@ main() {
   if [[ "${DIVBAND_COPY_SSH_ID:-}" == "1" ]]; then
     COPY_SSH_ID=true
   fi
+  GHCR_TOKEN="${GHCR_TOKEN:-${DIVBAND_GHCR_TOKEN:-}}"
 
   require_gh
   detect_repo
@@ -398,6 +402,14 @@ main() {
   set_secret_from_value DIVBAND_VPS_HOST "${VPS_HOST}"
   set_secret_from_value DIVBAND_VPS_USER "${VPS_USER}"
   set_repo_variable DIVBAND_ARVAN_ENABLED "${ARVAN_ENABLED}"
+
+  if [[ -n "${GHCR_TOKEN}" ]]; then
+    set_secret_from_value DIVBAND_GHCR_TOKEN "${GHCR_TOKEN}"
+  elif [[ "${ASSUME_YES}" != "true" ]] && confirm "Set DIVBAND_GHCR_TOKEN for private GHCR pulls on the VPS?"; then
+    read -r -s -p "PAT (read:packages): " GHCR_TOKEN
+    printf '\n'
+    [[ -n "${GHCR_TOKEN}" ]] && set_secret_from_value DIVBAND_GHCR_TOKEN "${GHCR_TOKEN}"
+  fi
 
   if [[ "${COPY_SSH_ID}" == "true" ]]; then
     copy_ssh_id

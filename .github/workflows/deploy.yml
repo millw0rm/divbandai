@@ -11,6 +11,10 @@ on:
         description: Run validate-vps playbook after deploy
         type: boolean
         default: true
+      ghcr_image_tag:
+        description: GHCR image tag to deploy (defaults to this commit SHA)
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -38,6 +42,10 @@ jobs:
         with:
           arvan_enabled: ${{ inputs.arvan_enabled }}
           validate_after_deploy: ${{ inputs.validate_after_deploy }}
+          use_ghcr: "true"
+          ghcr_owner: ${{ github.repository_owner }}
+          ghcr_image_tag: ${{ inputs.ghcr_image_tag != '' && inputs.ghcr_image_tag || github.sha }}
+          ghcr_token: ${{ secrets.DIVBAND_GHCR_TOKEN }}
           ssh_private_key: ${{ secrets.DIVBAND_SSH_PRIVATE_KEY }}
           vps_host: ${{ secrets.DIVBAND_VPS_HOST }}
           vps_user: ${{ secrets.DIVBAND_VPS_USER || 'ubuntu' }}

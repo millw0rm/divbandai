@@ -10,6 +10,22 @@ inputs:
     description: Run validate-vps after deploy
     required: false
     default: "true"
+  use_ghcr:
+    description: Pull buildable project images from GHCR instead of building on the VPS
+    required: false
+    default: "false"
+  ghcr_owner:
+    description: GHCR namespace (GitHub user or org, lowercase)
+    required: false
+    default: ""
+  ghcr_image_tag:
+    description: Image tag to deploy (usually the git commit SHA)
+    required: false
+    default: main
+  ghcr_token:
+    description: PAT with read:packages for private GHCR pulls on the VPS (optional if packages are public)
+    required: false
+    default: ""
   ssh_private_key:
     description: SSH private key for the deploy user
     required: true
@@ -32,4 +48,8 @@ runs:
         DIVBAND_VPS_USER: ${{ inputs.vps_user }}
         DIVBAND_ARVAN_ENABLED: ${{ inputs.arvan_enabled }}
         DIVBAND_VALIDATE_AFTER_DEPLOY: ${{ inputs.validate_after_deploy }}
+        DIVBAND_USE_GHCR: ${{ inputs.use_ghcr }}
+        DIVBAND_GHCR_OWNER: ${{ inputs.ghcr_owner }}
+        DIVBAND_GHCR_IMAGE_TAG: ${{ inputs.ghcr_image_tag }}
+        DIVBAND_GHCR_TOKEN: ${{ inputs.ghcr_token }}
       run: bash scripts/github-actions-deploy.sh
