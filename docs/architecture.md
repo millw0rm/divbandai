@@ -1,5 +1,8 @@
 # Architecture
 
+For a full platform overview (API, project kinds, provisioning flows, and
+operations), see [platform-guide.md](platform-guide.md).
+
 This branch keeps only the infrastructure needed to prove the first public
 traffic path.
 
@@ -8,19 +11,21 @@ traffic path.
 | Component | Path | Responsibility |
 | --- | --- | --- |
 | HAProxy | `config/haproxy/haproxy.cfg` | Public HTTP entrypoint and host-header router. |
-| Test project | `projects/test` | Static Nginx site for `test.divband.com`. |
+| Projects | `projects/<name>` | Generated Nginx static sites or Next.js apps for `name.divbandai.ir`. |
 | Docker Compose | `docker-compose.yml` | Defines and connects the containers on one VM. |
-| VPS Ansible | `infra/ansible` | Reversible automation for Arvan mirror/registry settings and Docker stack deployment. |
-| VPS validation | `infra/ansible/playbooks/validate-vps.yml` | Asserts the selected Arvan/non-Arvan mode and smoke-tests HAProxy routing. |
+| Project generator | `scripts/create-project.py` | Creates project files and refreshes local routing configs. |
+| Local Ansible | `infra/ansible/playbooks/local-docker.yml` | Local Docker install/start, config rendering, Compose startup, and smoke tests. |
+| Remote Ansible | `infra/ansible/playbooks/remote-docker.yml` | VPS Docker install/start, optional Arvan mirror/registry settings, config rendering, Compose startup, and smoke tests. |
+| Validation | `infra/ansible/playbooks/validate-local.yml`, `infra/ansible/playbooks/validate-vps.yml` | Asserts Docker/Compose state and smoke-tests HAProxy routing. |
 
 ## Request Flow
 
 ```text
 Browser
-  -> DNS A record for test.divband.com
+  -> DNS A record for divbandai.ir or test.divbandai.ir
   -> VM public IP port 80
   -> HAProxy frontend public_http
-  -> Host header match: test.divband.com
+  -> Host header match: divbandai.ir, www.divbandai.ir, or test.divbandai.ir
   -> backend test_project
   -> Nginx service test-web
   -> /usr/share/nginx/html/index.html
@@ -35,10 +40,10 @@ Included:
 - One VM deployment model.
 - Docker Compose runtime.
 - HAProxy HTTP routing.
-- Static Nginx project.
+- Generated static Nginx projects.
 - Manual SSH deployment runbook.
-- Reversible Ansible playbook for the VPS setup event.
-- Validation playbooks for current-state checks and guarded on/off/on toggle smoke tests.
+- Separate local and remote Ansible playbooks for Docker/HAProxy setup.
+- Validation playbooks for current-state checks and guarded remote on/off/on toggle smoke tests.
 
 Not included:
 

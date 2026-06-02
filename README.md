@@ -7,13 +7,17 @@ The current deployable system is:
 - Docker Compose on one VM.
 - HAProxy as the public HTTP entrypoint.
 - A single internal Nginx project named `test`.
-- Host routing for `test.divband.com`.
+- Host routing for `divbandai.ir`, `www.divbandai.ir`, and `test.divbandai.ir`.
 - Container images pulled through `docker.arvancloud.ir`.
 
-There is no Kubernetes, Terraform, GitLab CI, runner automation, or app control
-plane in this branch. The first Ansible layer is deliberately limited to the
-manual VPS event: Arvan mirror/registry toggles, Docker package installation,
-Compose rendering, and smoke tests.
+There is no Kubernetes, Terraform, GitLab CI, or runner automation in this
+branch. Provisioning is handled by a **local Project API** and
+`scripts/create-project.py`, which generate Docker Compose services, HAProxy
+routes, and project scaffolds (Nginx static or Next.js). Ansible covers VPS
+bootstrap: Arvan mirror/registry toggles, Docker install, Compose deploy, and
+smoke tests.
+
+**Full documentation:** [docs/platform-guide.md](docs/platform-guide.md)
 
 ## Repository Map
 
@@ -32,14 +36,64 @@ Compose rendering, and smoke tests.
 ├── docs/
 │   ├── architecture.md
 │   └── manual-ssh-deployment.md
+├── scripts/
+│   └── create-project.py
 └── infra/
     └── ansible/
         ├── README.md
+        ├── tasks/
+        ├── vars/
         └── playbooks/
-            └── vps-docker.yml
+            ├── local-docker.yml
+            ├── remote-docker.yml
+            ├── validate-local.yml
+            └── validate-vps.yml
 ```
 
 ## Local Run
+
+Create or refresh a static project:
+
+```bash
+make project NAME=test
+```
+
+Create a Next.js project instead of a static Nginx project:
+
+```bash
+make project NAME=test2 KIND=nextjs
+```
+
+For `NAME=test`, the generator creates:
+
+- `projects/test/html/index.html`
+- `projects/test/nginx.conf`
+- routing for `test.divbandai.ir`
+- checked-in `docker-compose.yml` and `config/haproxy/haproxy.cfg`
+
+The generator also updates `infra/ansible/vars/projects.yml`, so local and
+remote Ansible deployments render the same project list.
+
+## Project API
+
+Run the local administrative API:
+
+```bash
+make api
+```
+
+Create a project through HTTP:
+
+```bash
+curl -X POST http://127.0.0.1:8080/projects \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"test2","kind":"nextjs"}'
+```
+
+Set `DIVBAND_API_TOKEN` to require `Authorization: Bearer <token>` for
+`GET /projects`, `POST /projects`, and `POST /deploy`.
+
+Planned API work (delete, cleanup, updates): [docs/api-todo.md](docs/api-todo.md).
 
 Start the stack:
 
@@ -50,7 +104,8 @@ docker compose up -d
 Test HAProxy routing:
 
 ```bash
-curl -H "Host: test.divband.com" http://127.0.0.1/
+curl -H "Host: divbandai.ir" http://127.0.0.1/
+curl -H "Host: test.divbandai.ir" http://127.0.0.1/
 ```
 
 Expected response:
@@ -67,15 +122,16 @@ docker compose down
 
 ## DNS
 
-Create an `A` record for `test.divband.com` pointing at the VM public IP.
+Create `A` records for `divbandai.ir`, `www.divbandai.ir`, and
+`test.divbandai.ir` pointing at the VM public IP.
 
 For local-only testing, add this to `/etc/hosts`:
 
 ```text
-127.0.0.1 test.divband.com
+127.0.0.1 divbandai.ir www.divbandai.ir test.divbandai.ir
 ```
 
-Then open `http://test.divband.com/`.
+Then open `http://divbandai.ir/` or `http://test.divbandai.ir/`.
 
 ## VM Deployment
 
@@ -83,6 +139,8 @@ Follow [docs/manual-ssh-deployment.md](docs/manual-ssh-deployment.md). The steps
 are intentionally explicit and operator-friendly so they can later be converted
 into Ansible tasks.
 
-The first reversible Ansible version of the VPS flow lives in
-[infra/ansible](infra/ansible/README.md). It can apply or revert the Arvan
-mirror/registry configuration with `divband_arvan_enabled=true|false`.
+The Ansible setup lives in [infra/ansible](infra/ansible/README.md). It has
+separate local and remote entrypoints, both covering Docker installation,
+HAProxy/Nginx config rendering, Compose startup, and smoke tests. The remote
+entrypoint can also apply or revert the Arvan mirror/registry configuration
+with `divband_arvan_enabled=true|false`.
