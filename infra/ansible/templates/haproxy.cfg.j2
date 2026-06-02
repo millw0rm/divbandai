@@ -16,9 +16,8 @@ frontend public_http
 
 {% for project in divband_projects %}
     acl host_{{ project.name }} hdr(host) -i{% for domain in project.domains %} {{ domain }}{% endfor %}
-    acl host_{{ project.name }}_port hdr(host) -i{% for domain in project.domains %} {{ domain }}:80{% endfor %}
 
-    use_backend {{ project.name }}_project if host_{{ project.name }} or host_{{ project.name }}_port
+    use_backend {{ project.name }}_project if host_{{ project.name }}
 {% endfor %}
     default_backend unknown_host
 

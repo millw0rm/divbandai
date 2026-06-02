@@ -404,12 +404,10 @@ def render_haproxy(projects):
     ]
     for project in projects:
         domains = " ".join(project["domains"])
-        port_domains = " ".join(f"{domain}:80" for domain in project["domains"])
         name = project["name"]
         lines.append(f"    acl host_{name} hdr(host) -i {domains}")
-        lines.append(f"    acl host_{name}_port hdr(host) -i {port_domains}")
         lines.append("")
-        lines.append(f"    use_backend {name}_project if host_{name} or host_{name}_port")
+        lines.append(f"    use_backend {name}_project if host_{name}")
     lines.extend(
         [
             "    default_backend unknown_host",

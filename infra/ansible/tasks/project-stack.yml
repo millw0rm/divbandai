@@ -89,11 +89,17 @@
 
 - name: Start Compose stack
   ansible.builtin.command:
-    cmd: docker compose up -d
+    cmd: docker compose up -d --remove-orphans
     chdir: "{{ divband_app_dir }}"
-  changed_when: "'Started' in divband_compose_up.stdout or 'Created' in divband_compose_up.stdout or 'Recreated' in divband_compose_up.stdout"
   register: divband_compose_up
   when: divband_deploy_stack | bool
+
+- name: Show Compose up output when stack may be unhealthy
+  ansible.builtin.debug:
+    msg: "{{ divband_compose_up.stdout_lines + divband_compose_up.stderr_lines }}"
+  when:
+    - divband_deploy_stack | bool
+    - divband_compose_up.rc != 0
 
 - name: Check Compose status
   ansible.builtin.command:
